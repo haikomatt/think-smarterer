@@ -71,6 +71,64 @@ def norm(s: str) -> str:
     return s.strip().lstrip("./").lower()
 
 
+def _resolve_note(target, by_rel, by_base):
+    """Resolve a wikilink target to a single note (first match), or None.
+
+    Obsidian-style: alias (|) and heading (#) suffixes are stripped; a slashed
+    link matches by vault-relative path or path suffix; a bare name matches by
+    basename. Value-agnostic (returns whatever the index stores). Shared by the
+    --claims and --graph reports, which consider md notes only and take the
+    first match.
+    """
+    t = target.split("|", 1)[0].split("#", 1)[0].strip().lstrip("./").lower()
+    parts = [p for p in t.split("/") if p not in ("", ".", "..")]
+    t = "/".join(parts)
+    if not t:
+        return None
+    if len(parts) > 1:
+        for key in (t, t + ".md"):
+            if key in by_rel:
+                return by_rel[key]
+        for rel, val in by_rel.items():
+            if rel.endswith("/" + t) or rel.endswith("/" + t + ".md"):
+                return val
+        return None
+    stem = t[:-3] if t.endswith(".md") else t
+    cands = by_base.get(stem) or []
+    return cands[0] if cands else None
+
+
+def _resolve_link(target, by_relpath, by_basename, by_fullname):
+    """Resolve a wikilink for broken-link detection.
+
+    Returns (resolved?, unique_target_or_None): a link counts as resolved if it
+    matches any file, but the concrete target is only returned when the match is
+    unique (mirroring Obsidian). Slashed links match by vault-relative path or
+    path suffix; bare names match by basename (note) or full filename
+    (attachment). Used by the default report's scan.
+    """
+    t = norm(target)
+    if not t:                       # pure "#heading" in-note link
+        return True, None
+    parts = [p for p in t.split("/") if p not in ("", ".", "..")]
+    t = "/".join(parts)
+    if len(parts) > 1:              # slashed link: path or suffix match
+        cands = set()
+        for key in (t, f"{t}.md"):
+            if key in by_relpath:
+                cands.add(by_relpath[key])
+        for rel, f in by_relpath.items():
+            if rel.endswith(f"/{t}") or rel.endswith(f"/{t}.md"):
+                cands.add(f)
+        hit = next(iter(cands)) if len(cands) == 1 else None
+        return bool(cands), hit
+    # bare name: basename (note) or full filename (attachment)
+    stem = t[:-3] if t.endswith(".md") else t
+    cands = by_basename.get(stem) or by_fullname.get(t) or []
+    hit = cands[0] if len(cands) == 1 else None
+    return bool(cands), hit
+
+
 def claims_report(vault):
     """Epistemic-status + staleness report for permanent (claim) notes."""
     from collections import defaultdict, Counter
@@ -79,18 +137,6 @@ def claims_report(vault):
     for f in md:
         r=str(f.relative_to(vault)).lower(); by_rel[r]=f; by_rel[r[:-3]]=f
         by_base[f.stem.lower()].append(f)
-    def resolve(t):
-        t=t.split("|")[0].split("#")[0].strip().lstrip("./").lower()
-        parts=[p for p in t.split("/") if p not in ("",".","..")]; t="/".join(parts)
-        if not t: return None
-        if len(parts)>1:
-            for k in (t,t+".md"):
-                if k in by_rel: return by_rel[k]
-            for r,fn in by_rel.items():
-                if r.endswith("/"+t) or r.endswith("/"+t+".md"): return fn
-            return None
-        c=by_base.get(t[:-3] if t.endswith(".md") else t) or []
-        return c[0] if c else None
     notes=[f for f in md if "permanent/" in str(f.relative_to(vault)).lower()
            and not f.name.startswith("00-") and f.name.lower()!="readme.md"]
     st_re=re.compile(r"^status:\s*([a-z]+)", re.M)
@@ -107,7 +153,7 @@ def claims_report(vault):
         if status in ("refuted","superseded"): revisit.append((f,status))
         sm=src_re.search(txt)
         if sm:
-            sf=resolve(sm.group(1))
+            sf=_resolve_note(sm.group(1), by_rel, by_base)
             if sf is not None and sf.exists() and sf.stat().st_mtime > f.stat().st_mtime:
                 stale.append((f,sf))
     rel=lambda f: str(f.relative_to(vault))
@@ -132,18 +178,6 @@ def graph_report(vault):
     by_rel={}; by_base=defaultdict(list)
     for r in rel:
         k=r.lower(); by_rel[k]=r; by_rel[k[:-3]]=r; by_base[os.path.basename(r)[:-3].lower()].append(r)
-    def res(t):
-        t=t.split("|")[0].split("#")[0].strip().lstrip("./").lower()
-        parts=[p for p in t.split("/") if p not in ("",".","..")]; t="/".join(parts)
-        if not t: return None
-        if len(parts)>1:
-            for k in (t,t+".md"):
-                if k in by_rel: return by_rel[k]
-            for r,fn in by_rel.items():
-                if r.endswith("/"+t) or r.endswith("/"+t+".md"): return fn
-            return None
-        c=by_base.get(t[:-3] if t.endswith(".md") else t) or []
-        return c[0] if c else None
     adj=defaultdict(set)
     for r in rel:
         infence=False
@@ -151,7 +185,7 @@ def graph_report(vault):
             if FENCE.match(line): infence=not infence; continue
             if infence: continue
             for _e,raw in WIKILINK.findall(INLINE_CODE.sub("",line)):
-                g=res(raw)
+                g=_resolve_note(raw, by_rel, by_base)
                 if g and g!=r: adj[r].add(g); adj[g].add(r)
     top=lambda r: r.split("/")[0] if "/" in r else "(root)"
     seen=set(); comps=[]
@@ -548,31 +582,6 @@ def main() -> int:
         if f.suffix.lower() == ".md":
             by_basename.setdefault(f.stem.lower(), []).append(f)
 
-    def resolve(target: str) -> tuple[bool, Path | None]:
-        """Return (resolved?, unique_target_or_None), mirroring Obsidian:
-        slashed links match by vault-relative path OR path suffix; leading
-        ./ and ../ segments are stripped; bare names match by basename."""
-        t = norm(target)
-        if not t:                       # pure "#heading" in-note link
-            return True, None
-        parts = [p for p in t.split("/") if p not in ("", ".", "..")]
-        t = "/".join(parts)
-        if len(parts) > 1:              # slashed link → path or suffix match
-            cands: set[Path] = set()
-            for key in (t, f"{t}.md"):
-                if key in by_relpath:
-                    cands.add(by_relpath[key])
-            for rel, f in by_relpath.items():
-                if rel.endswith(f"/{t}") or rel.endswith(f"/{t}.md"):
-                    cands.add(f)
-            hit = next(iter(cands)) if len(cands) == 1 else None
-            return bool(cands), hit
-        # bare name: basename (note) or full filename (attachment)
-        stem = t[:-3] if t.endswith(".md") else t
-        cands = by_basename.get(stem) or by_fullname.get(t) or []
-        hit = cands[0] if len(cands) == 1 else None
-        return bool(cands), hit
-
     # ---- scan notes ---------------------------------------------------------
     broken: list[tuple[str, int, str]] = []
     inbound: dict[Path, int] = {f: 0 for f in md_files}
@@ -599,7 +608,7 @@ def main() -> int:
                     path_links += 1
                 else:
                     filename_links += 1
-                ok, hit = resolve(target)
+                ok, hit = _resolve_link(target, by_relpath, by_basename, by_fullname)
                 if ok:
                     if hit in inbound:
                         inbound[hit] += 1
