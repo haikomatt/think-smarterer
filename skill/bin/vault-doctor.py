@@ -30,6 +30,7 @@ import json
 import os
 import re
 import sys
+from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
 
@@ -131,91 +132,125 @@ def _resolve_link(target, by_relpath, by_basename, by_fullname):
 
 def claims_report(vault):
     """Epistemic-status + staleness report for permanent (claim) notes."""
-    from collections import defaultdict, Counter
-    md=[f for f in iter_files(vault) if f.suffix.lower()==".md"]
-    by_rel={}; by_base=defaultdict(list)
-    for f in md:
-        r=str(f.relative_to(vault)).lower(); by_rel[r]=f; by_rel[r[:-3]]=f
-        by_base[f.stem.lower()].append(f)
-    notes=[f for f in md if "permanent/" in str(f.relative_to(vault)).lower()
-           and not f.name.startswith("00-") and f.name.lower()!="readme.md"]
-    st_re=re.compile(r"^status:\s*([a-z]+)", re.M)
-    src_re=re.compile(r"\*\*Source:\*\*\s*\[\[([^\]]+?)\]\]")
-    ev_re=re.compile(r"^## Evidence", re.M)
-    by_status=Counter(); no_status=[]; untested=[]; revisit=[]; stale=[]
+    md_files = [f for f in iter_files(vault) if f.suffix.lower() == ".md"]
+    by_relpath = {}
+    by_basename = defaultdict(list)
+    for f in md_files:
+        rel_path = str(f.relative_to(vault)).lower()
+        by_relpath[rel_path] = f
+        by_relpath[rel_path[:-3]] = f
+        by_basename[f.stem.lower()].append(f)
+    notes = [f for f in md_files if "permanent/" in str(f.relative_to(vault)).lower()
+             and not f.name.startswith("00-") and f.name.lower() != "readme.md"]
+    status_re = re.compile(r"^status:\s*([a-z]+)", re.M)
+    source_re = re.compile(r"\*\*Source:\*\*\s*\[\[([^\]]+?)\]\]")
+    evidence_re = re.compile(r"^## Evidence", re.M)
+    by_status = Counter()
+    no_status = []
+    untested = []
+    revisit = []
+    stale = []
     for f in notes:
-        txt=f.read_text(encoding="utf-8",errors="replace")
-        m=st_re.search(txt); status=m.group(1) if m else None
-        if status: by_status[status]+=1
-        else: no_status.append(f)
-        has_ev=bool(ev_re.search(txt))
-        if (status in (None,"hypothesis")) and not has_ev: untested.append(f)
-        if status in ("refuted","superseded"): revisit.append((f,status))
-        sm=src_re.search(txt)
-        if sm:
-            sf=_resolve_note(sm.group(1), by_rel, by_base)
-            if sf is not None and sf.exists() and sf.stat().st_mtime > f.stat().st_mtime:
-                stale.append((f,sf))
-    rel=lambda f: str(f.relative_to(vault))
+        text = f.read_text(encoding="utf-8", errors="replace")
+        status_match = status_re.search(text)
+        status = status_match.group(1) if status_match else None
+        if status:
+            by_status[status] += 1
+        else:
+            no_status.append(f)
+        has_evidence = bool(evidence_re.search(text))
+        if (status in (None, "hypothesis")) and not has_evidence:
+            untested.append(f)
+        if status in ("refuted", "superseded"):
+            revisit.append((f, status))
+        source_match = source_re.search(text)
+        if source_match:
+            source_note = _resolve_note(source_match.group(1), by_relpath, by_basename)
+            if source_note is not None and source_note.exists() and source_note.stat().st_mtime > f.stat().st_mtime:
+                stale.append((f, source_note))
+    rel = lambda f: str(f.relative_to(vault))
     print(f"# vault-doctor --claims  {vault}")
     print(f"claim notes: {len(notes)}")
-    for s,n in by_status.most_common(): print(f"  {s:<12} {n}")
-    if no_status: print(f"  {'(no status)':<12} {len(no_status)}")
-    def dump(title,items,fmt):
+    for status_name, count in by_status.most_common():
+        print(f"  {status_name:<12} {count}")
+    if no_status:
+        print(f"  {'(no status)':<12} {len(no_status)}")
+    def dump(title, items, fmt):
         print(f"\n## {title} ({len(items)})")
-        for it in items[:40]: print("  "+fmt(it))
+        for item in items[:40]:
+            print("  " + fmt(item))
     dump("Untested (hypothesis / no status, no Evidence): validate or link evidence",
          untested, rel)
-    dump("Revisit (refuted / superseded)", revisit, lambda x: f"[{x[1]}] {rel(x[0])}")
+    dump("Revisit (refuted / superseded)", revisit, lambda entry: f"[{entry[1]}] {rel(entry[0])}")
     dump("Potentially STALE: source doc is newer than the note (new evidence may exist)",
-         stale, lambda x: f"{rel(x[0])}  <-  {rel(x[1])}")
+         stale, lambda entry: f"{rel(entry[0])}  <-  {rel(entry[1])}")
     return 0
 
 def graph_report(vault):
     """Graph connectivity: components (islands), isolated notes, cross-silo edges."""
-    from collections import defaultdict
-    rel=[str(f.relative_to(vault)) for f in iter_files(vault) if f.suffix.lower()==".md"]
-    by_rel={}; by_base=defaultdict(list)
-    for r in rel:
-        k=r.lower(); by_rel[k]=r; by_rel[k[:-3]]=r; by_base[os.path.basename(r)[:-3].lower()].append(r)
-    adj=defaultdict(set)
-    for r in rel:
-        infence=False
-        for line in (vault/r).read_text(encoding="utf-8",errors="replace").splitlines():
-            if FENCE.match(line): infence=not infence; continue
-            if infence: continue
-            for _e,raw in WIKILINK.findall(INLINE_CODE.sub("",line)):
-                g=_resolve_note(raw, by_rel, by_base)
-                if g and g!=r: adj[r].add(g); adj[g].add(r)
-    top=lambda r: r.split("/")[0] if "/" in r else "(root)"
-    seen=set(); comps=[]
-    for r in rel:
-        if r in seen: continue
-        st=[r]; c=[]
-        while st:
-            x=st.pop()
-            if x in seen: continue
-            seen.add(x); c.append(x); st+=[y for y in adj[x] if y not in seen]
-        comps.append(c)
-    comps.sort(key=len,reverse=True)
-    iso=sum(1 for c in comps if len(c)==1)
-    outdeg=defaultdict(int); n_by=defaultdict(int)
-    for r in rel: n_by[top(r)]+=1
-    for r,nb in adj.items():
-        for g in nb:
-            if top(r)!=top(g): outdeg[top(r)]+=1
+    relpaths = [str(f.relative_to(vault)) for f in iter_files(vault) if f.suffix.lower() == ".md"]
+    by_relpath = {}
+    by_basename = defaultdict(list)
+    for rel in relpaths:
+        key = rel.lower()
+        by_relpath[key] = rel
+        by_relpath[key[:-3]] = rel
+        by_basename[os.path.basename(rel)[:-3].lower()].append(rel)
+    adjacency = defaultdict(set)
+    for rel in relpaths:
+        in_fence = False
+        for line in (vault / rel).read_text(encoding="utf-8", errors="replace").splitlines():
+            if FENCE.match(line):
+                in_fence = not in_fence
+                continue
+            if in_fence:
+                continue
+            for _embed, raw in WIKILINK.findall(INLINE_CODE.sub("", line)):
+                resolved = _resolve_note(raw, by_relpath, by_basename)
+                if resolved and resolved != rel:
+                    adjacency[rel].add(resolved)
+                    adjacency[resolved].add(rel)
+    top = lambda path: path.split("/")[0] if "/" in path else "(root)"
+    seen = set()
+    components = []
+    for rel in relpaths:
+        if rel in seen:
+            continue
+        stack = [rel]
+        component = []
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            component.append(node)
+            stack += [neighbour for neighbour in adjacency[node] if neighbour not in seen]
+        components.append(component)
+    components.sort(key=len, reverse=True)
+    isolated = sum(1 for component in components if len(component) == 1)
+    cross_degree = defaultdict(int)
+    notes_by_folder = defaultdict(int)
+    for rel in relpaths:
+        notes_by_folder[top(rel)] += 1
+    for rel, neighbours in adjacency.items():
+        for neighbour in neighbours:
+            if top(rel) != top(neighbour):
+                cross_degree[top(rel)] += 1
     print(f"# vault-doctor --graph  {vault}")
-    print(f"nodes: {len(rel)}   components (islands): {len(comps)}   isolated singles: {iso}")
-    print(f"largest cluster: {len(comps[0]) if comps else 0}")
+    print(f"nodes: {len(relpaths)}   components (islands): {len(components)}   isolated singles: {isolated}")
+    print(f"largest cluster: {len(components[0]) if components else 0}")
     print("\nmulti-note islands (not the main cluster):")
-    for c in comps[1:9]:
-        if len(c)<2: break
-        fold=defaultdict(int)
-        for r in c: fold[top(r)]+=1
-        print("  "+str(len(c))+"  "+", ".join(f"{k}:{v}" for k,v in sorted(fold.items(),key=lambda x:-x[1])[:3]))
+    for component in components[1:9]:
+        if len(component) < 2:
+            break
+        folder_counts = defaultdict(int)
+        for rel in component:
+            folder_counts[top(rel)] += 1
+        print("  " + str(len(component)) + "  " + ", ".join(
+            f"{folder}:{count}" for folder, count in sorted(folder_counts.items(), key=lambda item: -item[1])[:3]))
     print("\nper top-folder cross-silo links (0 = island):")
-    for fo in sorted(n_by):
-        print(f"  {fo:<16} notes:{n_by[fo]:<4} cross:{outdeg[fo]}")
+    for folder in sorted(notes_by_folder):
+        print(f"  {folder:<16} notes:{notes_by_folder[folder]:<4} cross:{cross_degree[folder]}")
     return 0
 
 
