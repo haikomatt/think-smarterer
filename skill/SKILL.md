@@ -235,14 +235,26 @@ frontmatter so an untested idea isn't mistaken for a proven one:
 - For anything **not `supported`**, put a callout at the top so validity shows on open:
   `> [!note] Status: hypothesis, ...` / `> [!warning] Status: contested` / `> [!danger] Status: refuted by [[...]]`.
 - **Check staleness:** `"$BIN"/vault-doctor.py --vault . --claims` lists notes by status and flags
-  untested claims, refuted/superseded to revisit, and notes whose Source doc is *newer*
-  than the note (new evidence may have landed; review and update the status).
+  untested claims, refuted/superseded to revisit, notes whose Source doc is *newer*
+  than the note (new evidence may have landed; review and update the status), and any
+  declared `grade_binding` invariant that's broken, overdue past `--claims-stale-days`
+  (default 30), or never verified.
 
 A companion `grade:` field records evidence strength on the ladder
 `suggested → tested → robust → replicated → paper-grade`, kept separate from
 `status:` (which tracks direction: open, supported, refuted). `grade` lives
 on both the hypothesis dossier and the permanent note it distils into; full
 criteria per rung are in [[empirical-robustness-standard]].
+
+Optionally, a permanent note's grade can be bound to an external invariant:
+`grade_binding` is a one-line, human-authored description written once, at
+grading time, of the invariant the grade depends on. `grade_binding_result`
+(`pass`/`fail`) and `grade_binding_checked` (`YYYY-MM-DD`) are written back
+by whatever external system owns the check (for example a CI job), never by
+hand and never by vault-doctor. vault-doctor only ever *reads* these two
+fields back: it never executes anything from frontmatter, deliberately,
+since the vault is multi-writer and an executable field would be an
+arbitrary-code-execution sink. A note with no `grade_binding` is unaffected.
 
 ## Hypotheses (the testing pipeline)
 
@@ -399,9 +411,11 @@ BIN=~/vault/Harness/Skills/smart-notes/bin
 "$BIN"/vault-doctor.py --vault ~/vault   # add --full for untruncated lists
 ```
 
-Other reports: `--claims` (epistemic status + staleness), `--graph` (connectivity),
-`--digest` (review-frontier leaks), `--hypotheses` (hypothesis-pipeline open queue,
-stale + grade-integrity, and a Resolved-by-grade view, see "Hypotheses" above).
+Other reports: `--claims` (epistemic status + staleness, plus grade-binding
+invariants; `--claims-stale-days` sets the horizon, default 30), `--graph`
+(connectivity), `--digest` (review-frontier leaks), `--hypotheses`
+(hypothesis-pipeline open queue, stale + grade-integrity, and a
+Resolved-by-grade view, see "Hypotheses" above).
 
 Read it as: **broken links** (fix, or intentional stubs) · **idea-bearing
 orphans** (link/promote/accept) · **oversized idea notes** (split only if an

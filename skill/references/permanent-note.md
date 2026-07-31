@@ -11,6 +11,13 @@ SKILL.md "The digest frontier".
 ```markdown
 ---
 tags: [<topic>, <topic>]
+
+# Optional grade-binding invariant (see SKILL.md "Claim status"): grade_binding is
+# written once by hand at grading time; grade_binding_result/grade_binding_checked
+# are written back by whichever external system owns the check, never by hand.
+# grade_binding: "<invariant, one line>"
+# grade_binding_result: pass          # pass | fail
+# grade_binding_checked: <YYYY-MM-DD>
 ---
 
 # <The claim, as a full sentence you could agree or disagree with>

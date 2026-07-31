@@ -42,6 +42,8 @@ OVERSIZED_WORDS = 3000
 # --digest: an ADD commit introducing more .md files than this is a bulk
 # import/restructure, not a per-finding promotion: its notes are not leaks.
 DIGEST_BULK_ADD = 6
+# --claims: default staleness horizon (days) for a pushed grade_binding check.
+GRADE_BINDING_MAX_AGE = 30
 WIKILINK = re.compile(r"(!?)\[\[([^\]\n]+?)\]\]")
 INLINE_CODE = re.compile(r"`[^`]*`")
 FENCE = re.compile(r"^\s*(```|~~~)")
@@ -130,8 +132,9 @@ def _resolve_link(target, by_relpath, by_basename, by_fullname):
     return bool(cands), hit
 
 
-def claims_report(vault):
+def claims_report(vault, stale_days):
     """Epistemic-status + staleness report for permanent (claim) notes."""
+    today = date.today()
     md_files = [f for f in iter_files(vault) if f.suffix.lower() == ".md"]
     by_relpath = {}
     by_basename = defaultdict(list)
@@ -150,8 +153,14 @@ def claims_report(vault):
     untested = []
     revisit = []
     stale = []
+    grade_binding_flagged = []
     for f in notes:
         text = f.read_text(encoding="utf-8", errors="replace")
+        fm_match = FM_BLOCK.match(text)
+        fm_block = fm_match.group(1) if fm_match else ""
+        binding_state = _grade_binding_state(fm_block, today, stale_days)
+        if binding_state is not None:
+            grade_binding_flagged.append((f, binding_state))
         status_match = status_re.search(text)
         status = status_match.group(1) if status_match else None
         if status:
@@ -184,6 +193,8 @@ def claims_report(vault):
     dump("Revisit (refuted / superseded)", revisit, lambda entry: f"[{entry[1]}] {rel(entry[0])}")
     dump("Potentially STALE: source doc is newer than the note (new evidence may exist)",
          stale, lambda entry: f"{rel(entry[0])}  <-  {rel(entry[1])}")
+    dump("Grade-binding invariant (broken / stale / unverified): a declared check needs a human look",
+         grade_binding_flagged, lambda entry: f"[{entry[1]}] {rel(entry[0])}")
     return 0
 
 def graph_report(vault):
@@ -385,6 +396,65 @@ def _frontmatter_field(fm_block: str, field: str) -> str | None:
     return m.group(1).strip().strip("\"'") or None
 
 
+def _grade_binding_state(fm_block: str, today: date, stale_days: int) -> str | None:
+    """Grade-binding invariant state for a permanent (claim) note.
+
+    Read-only PUSH-model check: an external owner (for example a CI job)
+    writes grade_binding_result / grade_binding_checked into the note's
+    frontmatter; this function only ever reads those two fields back, never
+    executes anything. grade_binding_result is normalised (stripped,
+    lowercased) before comparison, since the writer is an external system in
+    another repo whose casing convention nothing on this side enforces: "Fail" /
+    "FAIL" and "Pass" / "PASS" must be read the same as their lowercase
+    forms, on both the fail path and the pass/staleness path. Precedence:
+      - no grade_binding field -> None (strict no-op)
+      - normalised result == "fail" -> "broken" (wins over everything,
+        including a grade_binding_checked far past the staleness horizon,
+        even if checked itself is missing)
+      - either of grade_binding_result / grade_binding_checked present
+        without the other, or both absent -> "unverified" (a half-landed
+        write-back is not a trustworthy verification)
+      - normalised result present and recognised as neither "fail" nor
+        "pass" (e.g. "error", "passed") -> "unverified": we have no evidence
+        of failure, so "broken" would overclaim, and silently returning None
+        would hide a check we can't actually read, so it fails closed toward
+        asking a human
+      - normalised result == "pass" and checked strictly older than
+        stale_days before today -> "stale" (checked == today - stale_days is
+        NOT stale)
+      - normalised result == "pass" and fresh -> None
+    A malformed/unparseable grade_binding_checked is treated as "unverified"
+    rather than raising, since the vault is multi-writer and a bad value must
+    never crash a health check.
+    """
+    grade_binding = _frontmatter_field(fm_block, "grade_binding")
+    if grade_binding is None:
+        return None
+
+    result = _frontmatter_field(fm_block, "grade_binding_result")
+    checked = _frontmatter_field(fm_block, "grade_binding_checked")
+    normalized_result = result.strip().lower() if result is not None else None
+
+    if normalized_result == "fail":
+        return "broken"
+
+    if result is None or checked is None:
+        return "unverified"
+
+    if normalized_result != "pass":
+        return "unverified"
+
+    try:
+        checked_date = date.fromisoformat(checked)
+    except ValueError:
+        return "unverified"
+
+    if (today - checked_date).days > stale_days:
+        return "stale"
+
+    return None
+
+
 def _get_section(body: str, heading: str) -> str:
     """Text under '## {heading}' up to the next '## ' heading or EOF."""
     m = re.search(rf'^##\s+{re.escape(heading)}\s*$', body, re.M)
@@ -576,6 +646,8 @@ def main() -> int:
     ap.add_argument("--full", action="store_true")
     ap.add_argument("--graph", action="store_true", help="graph connectivity report")
     ap.add_argument("--claims", action="store_true", help="epistemic-status + staleness report")
+    ap.add_argument("--claims-stale-days", type=int, default=GRADE_BINDING_MAX_AGE,
+                    help=f"staleness window for a pushed grade_binding check (default {GRADE_BINDING_MAX_AGE})")
     ap.add_argument("--digest", action="store_true", help="#digest review-frontier leak check")
     ap.add_argument("--digest-days", type=int, default=14, help="window for --digest (default 14)")
     ap.add_argument("--hypotheses", action="store_true",
@@ -593,7 +665,7 @@ def main() -> int:
         return graph_report(vault)
 
     if args.claims:
-        return claims_report(vault)
+        return claims_report(vault, args.claims_stale_days)
 
     if args.digest:
         return digest_report(vault, args.digest_days)
