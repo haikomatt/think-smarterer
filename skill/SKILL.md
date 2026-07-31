@@ -248,13 +248,18 @@ criteria per rung are in [[empirical-robustness-standard]].
 
 Optionally, a permanent note's grade can be bound to an external invariant:
 `grade_binding` is a one-line, human-authored description written once, at
-grading time, of the invariant the grade depends on. `grade_binding_result`
-(`pass`/`fail`) and `grade_binding_checked` (`YYYY-MM-DD`) are written back
-by whatever external system owns the check (for example a CI job), never by
-hand and never by vault-doctor. vault-doctor only ever *reads* these two
-fields back: it never executes anything from frontmatter, deliberately,
-since the vault is multi-writer and an executable field would be an
-arbitrary-code-execution sink. A note with no `grade_binding` is unaffected.
+grading time, of the invariant the grade depends on. An optional
+`grade_binding_id` (a stable machine-readable slug) lets the external writer
+find which notes it owns by id rather than by matching the prose, which is
+free to be reworded; a note that declares `grade_binding` but no
+`grade_binding_id` is never auto-written to and simply stays `unverified`.
+`grade_binding_result` (`pass`/`fail`) and `grade_binding_checked`
+(`YYYY-MM-DD`) are written back by whatever external system owns the check
+(for example a CI job), never by hand and never by vault-doctor. vault-doctor
+only ever *reads* these fields back: it never executes anything from
+frontmatter, deliberately, since the vault is multi-writer and an executable
+field would be an arbitrary-code-execution sink. A note with no
+`grade_binding` is unaffected.
 
 ## Hypotheses (the testing pipeline)
 
