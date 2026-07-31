@@ -23,6 +23,7 @@ the rename. For a cooperative, low-contention personal vault that window is tiny
 and git makes every state recoverable regardless, so CAS + git is sufficient
 without a lock. Add flock only if real write contention shows up.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,13 +44,22 @@ def sha256_of(path: Path) -> str | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("path")
-    ap.add_argument("--print-sha", action="store_true",
-                    help="print current sha256 (empty if absent) and exit")
+    ap.add_argument(
+        "--print-sha",
+        action="store_true",
+        help="print current sha256 (empty if absent) and exit",
+    )
     ap.add_argument("--expect-sha", help="require this current sha before writing")
-    ap.add_argument("--expect-absent", action="store_true",
-                    help="require the file NOT to exist before writing")
-    ap.add_argument("--force", action="store_true",
-                    help="write regardless of current state (last-writer-wins)")
+    ap.add_argument(
+        "--expect-absent",
+        action="store_true",
+        help="require the file NOT to exist before writing",
+    )
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="write regardless of current state (last-writer-wins)",
+    )
     args = ap.parse_args()
     path = Path(args.path)
 
@@ -63,17 +73,24 @@ def main() -> int:
     if not args.force:
         if args.expect_absent:
             if current is not None:
-                print(f"CONFLICT: {path} already exists (sha {current})", file=sys.stderr)
+                print(
+                    f"CONFLICT: {path} already exists (sha {current})", file=sys.stderr
+                )
                 return 3
         elif args.expect_sha is not None:
             if current != args.expect_sha:
-                print(f"CONFLICT: {path} changed under you (expected "
-                      f"{args.expect_sha or 'absent'}, found {current or 'absent'}); "
-                      f"re-read and retry", file=sys.stderr)
+                print(
+                    f"CONFLICT: {path} changed under you (expected "
+                    f"{args.expect_sha or 'absent'}, found {current or 'absent'}); "
+                    f"re-read and retry",
+                    file=sys.stderr,
+                )
                 return 3
         else:
-            print("usage: pass --expect-sha SHA, --expect-absent, or --force",
-                  file=sys.stderr)
+            print(
+                "usage: pass --expect-sha SHA, --expect-absent, or --force",
+                file=sys.stderr,
+            )
             return 2
 
     data = sys.stdin.buffer.read()

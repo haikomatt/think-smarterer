@@ -27,6 +27,7 @@ Commands:
 
 Exit: 0 ok · 1 drain finished with conflicts · 2 usage/IO.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,8 +41,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-STORE = Path(os.environ.get("VAULT_OUTBOX",
-                            Path.home() / ".claude" / "vault-outbox"))
+STORE = Path(os.environ.get("VAULT_OUTBOX", Path.home() / ".claude" / "vault-outbox"))
 
 
 def _now() -> str:
@@ -109,20 +109,22 @@ def _apply(entry: dict, vault: Path) -> str:
     data = entry["content"].encode("utf-8", errors="surrogateescape")
     csha = hashlib.sha256(data).hexdigest()
     if cur == csha:
-        return "applied"                       # already there (idempotent)
+        return "applied"  # already there (idempotent)
     if entry["expect"] == "absent":
         if cur is None:
             _atomic_write(target, data)
             return "applied"
-        return "conflict"                      # exists with different content
+        return "conflict"  # exists with different content
     # expect sha
     if cur == entry["base_sha"]:
         _atomic_write(target, data)
         return "applied"
-    return "conflict"                          # base changed under us
+    return "conflict"  # base changed under us
 
 
-def _reconcile_conflicts(vault: Path, applied_dir: Path, conflict_dir: Path) -> list[str]:
+def _reconcile_conflicts(
+    vault: Path, applied_dir: Path, conflict_dir: Path
+) -> list[str]:
     """Retire conflict entries that are now no-ops: the on-disk file already
     matches the entry's content (another writer produced the same bytes, e.g. a
     double-promotion of the same note). Provably safe: nothing is written, the
@@ -135,11 +137,14 @@ def _reconcile_conflicts(vault: Path, applied_dir: Path, conflict_dir: Path) -> 
             entry = json.loads(f.read_text())
         except (OSError, json.JSONDecodeError):
             continue
-        if entry.get("content_sha") and _sha(vault / entry["target"]) == entry["content_sha"]:
+        if (
+            entry.get("content_sha")
+            and _sha(vault / entry["target"]) == entry["content_sha"]
+        ):
             try:
                 os.replace(f, applied_dir / f.name)
             except FileNotFoundError:
-                continue                           # another drainer grabbed it, fine
+                continue  # another drainer grabbed it, fine
             resolved.append(entry["target"])
     return resolved
 
@@ -170,18 +175,27 @@ def drain(args) -> int:
             print(f"  applied  {entry['target']}")
         else:
             conflicts.append(entry["target"])
-            print(f"  CONFLICT {entry['target']}  (base changed; entry kept in "
-                  f"conflict/{f.name})", file=sys.stderr)
+            print(
+                f"  CONFLICT {entry['target']}  (base changed; entry kept in "
+                f"conflict/{f.name})",
+                file=sys.stderr,
+            )
 
     if args.commit and applied_targets and (vault / ".git").exists():
         # stage ONLY the drained files, so a commit never sweeps up other
         # sessions' unrelated uncommitted work
         subprocess.run(["git", "-C", str(vault), "add", *applied_targets], check=False)
         msg = args.message or f"vault-outbox: drain {len(applied_targets)} note(s)"
-        r = subprocess.run(["git", "-C", str(vault), "commit", "-q", "-m", msg],
-                           capture_output=True, text=True)
-        print(f"  committed {len(applied_targets)} file(s)" if r.returncode == 0
-              else f"  git commit: {r.stderr.strip() or 'nothing to commit'}")
+        r = subprocess.run(
+            ["git", "-C", str(vault), "commit", "-q", "-m", msg],
+            capture_output=True,
+            text=True,
+        )
+        print(
+            f"  committed {len(applied_targets)} file(s)"
+            if r.returncode == 0
+            else f"  git commit: {r.stderr.strip() or 'nothing to commit'}"
+        )
 
     print(f"drain: {len(applied_targets)} applied, {len(conflicts)} conflict(s)")
     return 1 if conflicts else 0
@@ -215,19 +229,24 @@ def show(args) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    e = sub.add_parser("enqueue"); e.set_defaults(fn=enqueue)
+    e = sub.add_parser("enqueue")
+    e.set_defaults(fn=enqueue)
     e.add_argument("--target", required=True, help="vault-relative path")
     e.add_argument("--base-sha", help="sha the edit was based on (existing file)")
     e.add_argument("--new", action="store_true", help="target must not yet exist")
     e.add_argument("--note", help="optional human note")
-    d = sub.add_parser("drain"); d.set_defaults(fn=drain)
+    d = sub.add_parser("drain")
+    d.set_defaults(fn=drain)
     d.add_argument("--vault", required=True)
     d.add_argument("--commit", action="store_true", help="git-commit applied files")
     d.add_argument("--message", help="commit message")
-    s = sub.add_parser("status"); s.set_defaults(fn=status)
-    rc = sub.add_parser("reconcile"); rc.set_defaults(fn=reconcile)
+    s = sub.add_parser("status")
+    s.set_defaults(fn=status)
+    rc = sub.add_parser("reconcile")
+    rc.set_defaults(fn=reconcile)
     rc.add_argument("--vault", required=True)
-    sh = sub.add_parser("show"); sh.set_defaults(fn=show)
+    sh = sub.add_parser("show")
+    sh.set_defaults(fn=show)
     sh.add_argument("id")
     args = ap.parse_args()
     return args.fn(args)

@@ -6,6 +6,7 @@ prints PASS/FAIL and exits nonzero on any failure. Also pytest-collectable.
 Imports the function under test from the sibling vault-doctor.py via importlib
 (that file has no .py-importable name, hence the dashes).
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -33,7 +34,9 @@ def _make_vault() -> Path:
 
     # 1. clean `tested` dossier: [[link]] in ## Experiment + "baseline" token
     #    present in the body -> must NOT be flagged (stale or grade-integrity).
-    _write(vault / "Hypotheses" / "clean-tested-dossier.md", f"""---
+    _write(
+        vault / "Hypotheses" / "clean-tested-dossier.md",
+        f"""---
 status: hypothesis
 grade: tested
 target_grade: tested
@@ -56,11 +59,14 @@ Beats the text-only baseline by 0.09 AUROC.
 
 ## Verdict
 Still open.
-""")
+""",
+    )
 
     # 2. `robust` dossier with confounds enumerated but NO uncertainty token
     #    -> expect a grade-integrity flag.
-    _write(vault / "Hypotheses" / "robust-missing-uncertainty.md", f"""---
+    _write(
+        vault / "Hypotheses" / "robust-missing-uncertainty.md",
+        f"""---
 status: hypothesis
 grade: robust
 target_grade: robust
@@ -83,12 +89,15 @@ Confounds enumerated and ruled out: order effects, prompt length.
 
 ## Verdict
 Still open.
-""")
+""",
+    )
 
     # 3. old `suggested` dossier, created 60 days before the reference date,
     #    no experiment link -> expect a stale flag.
     old_date = REFERENCE_DATE - timedelta(days=60)
-    _write(vault / "Hypotheses" / "old-suggested-no-link.md", f"""---
+    _write(
+        vault / "Hypotheses" / "old-suggested-no-link.md",
+        f"""---
 status: hypothesis
 grade: suggested
 target_grade: tested
@@ -111,10 +120,13 @@ Not yet run.
 
 ## Verdict
 Still open.
-""")
+""",
+    )
 
     # 4. clean recent dossier -> expect no flags at all.
-    _write(vault / "Hypotheses" / "clean-recent-dossier.md", f"""---
+    _write(
+        vault / "Hypotheses" / "clean-recent-dossier.md",
+        f"""---
 status: hypothesis
 grade: suggested
 target_grade: tested
@@ -137,12 +149,15 @@ Not yet run.
 
 ## Verdict
 Still open.
-""")
+""",
+    )
 
     # 5. resolved `supported` dossier, well-formed (confound + uncertainty
     #    tokens present) -> must appear in resolved, NOT in open, and must NOT
     #    be spuriously flagged stale/integrity.
-    _write(vault / "Hypotheses" / "resolved-supported-dossier.md", f"""---
+    _write(
+        vault / "Hypotheses" / "resolved-supported-dossier.md",
+        f"""---
 status: supported
 grade: robust
 target_grade: robust
@@ -166,12 +181,15 @@ Effect size reported with a 95% CI: 0.85-0.95.
 
 ## Verdict
 Supported at grade robust.
-""")
+""",
+    )
 
     # 6. resolved `mixed` dossier (supported part + refuted part), well-formed
     #    -> must appear in resolved as status "mixed", NOT in open, and must
     #    NOT be spuriously flagged stale/integrity.
-    _write(vault / "Hypotheses" / "resolved-mixed-dossier.md", f"""---
+    _write(
+        vault / "Hypotheses" / "resolved-mixed-dossier.md",
+        f"""---
 status: mixed
 grade: robust
 target_grade: paper-grade
@@ -195,15 +213,19 @@ Effect size reported with a 95% CI: 0.85-0.95.
 
 ## Verdict
 Supported part at grade robust; the stronger, beyond-scope part is refuted.
-""")
+""",
+    )
 
     # index file (00-* prefix) must NOT be picked up as a dossier.
-    _write(vault / "Hypotheses" / "00-INDEX.md", """---
+    _write(
+        vault / "Hypotheses" / "00-INDEX.md",
+        """---
 type: project-index
 ---
 
 # Hypotheses index
-""")
+""",
+    )
 
     return vault
 
@@ -226,9 +248,13 @@ def test_robust_dossier_missing_uncertainty_flagged():
         findings = vault_doctor._hypothesis_findings(vault, 21, REFERENCE_DATE)
         integrity = {p: missing for p, _grade, missing in findings["integrity"]}
         path = "Hypotheses/robust-missing-uncertainty.md"
-        assert path in integrity, f"expected grade-integrity flag for {path}, got {integrity}"
-        assert any("uncertainty" in m.lower() or "interval" in m.lower() or "ci" in m.lower()
-                   for m in integrity[path]), integrity[path]
+        assert path in integrity, (
+            f"expected grade-integrity flag for {path}, got {integrity}"
+        )
+        assert any(
+            "uncertainty" in m.lower() or "interval" in m.lower() or "ci" in m.lower()
+            for m in integrity[path]
+        ), integrity[path]
     finally:
         shutil.rmtree(vault)
 
@@ -306,8 +332,11 @@ def test_resolved_mixed_dossier_in_resolved_not_open_and_clean():
 
 
 def _run_all() -> int:
-    tests = [(name, fn) for name, fn in sorted(globals().items())
-             if name.startswith("test_") and callable(fn)]
+    tests = [
+        (name, fn)
+        for name, fn in sorted(globals().items())
+        if name.startswith("test_") and callable(fn)
+    ]
     failures = []
     for name, fn in tests:
         try:

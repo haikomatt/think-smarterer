@@ -18,6 +18,7 @@ wiring bug in the report itself (wrong section, wrong filter, wrong label)
 would otherwise be invisible: against a small vault the section always prints
 count 0 by default, so nothing would otherwise exercise it.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -289,7 +290,9 @@ def _make_claims_vault(stale_days: int) -> Path:
     fresh_checked = (today - timedelta(days=1)).isoformat()
 
     # broken: pushed result disagrees outright.
-    _write(vault / "Permanent" / "broken-grade-binding-note.md", f"""---
+    _write(
+        vault / "Permanent" / "broken-grade-binding-note.md",
+        f"""---
 status: supported
 grade: robust
 type: permanent
@@ -302,10 +305,13 @@ grade_binding_checked: {fresh_checked}
 # A note whose grade-binding check came back failing
 
 Body text, not exercised by this report.
-""")
+""",
+    )
 
     # stale: last known result was a pass, but it's overdue for re-check.
-    _write(vault / "Permanent" / "stale-grade-binding-note.md", f"""---
+    _write(
+        vault / "Permanent" / "stale-grade-binding-note.md",
+        f"""---
 status: supported
 grade: robust
 type: permanent
@@ -318,10 +324,13 @@ grade_binding_checked: {old_checked}
 # A note whose grade-binding check is overdue for re-verification
 
 Body text, not exercised by this report.
-""")
+""",
+    )
 
     # unverified: declared at grading time, write-back never landed.
-    _write(vault / "Permanent" / "unverified-grade-binding-note.md", f"""---
+    _write(
+        vault / "Permanent" / "unverified-grade-binding-note.md",
+        f"""---
 status: supported
 grade: robust
 type: permanent
@@ -332,10 +341,13 @@ grade_binding: "{GRADE_BINDING}"
 # A note with a declared grade-binding invariant never checked
 
 Body text, not exercised by this report.
-""")
+""",
+    )
 
     # clean: bound, checked, passing, fresh: must NOT appear in the section.
-    _write(vault / "Permanent" / "clean-grade-binding-note.md", f"""---
+    _write(
+        vault / "Permanent" / "clean-grade-binding-note.md",
+        f"""---
 status: supported
 grade: robust
 type: permanent
@@ -348,10 +360,13 @@ grade_binding_checked: {fresh_checked}
 # A note whose grade-binding check is passing and fresh
 
 Body text, not exercised by this report.
-""")
+""",
+    )
 
     # unbound: no grade_binding field at all: the common case, strict no-op.
-    _write(vault / "Permanent" / "plain-note-no-grade-binding.md", """---
+    _write(
+        vault / "Permanent" / "plain-note-no-grade-binding.md",
+        """---
 status: supported
 grade: robust
 type: permanent
@@ -361,7 +376,8 @@ created: 2026-07-01
 # A plain permanent note with no grade-binding invariant declared
 
 Body text, not exercised by this report.
-""")
+""",
+    )
 
     return vault
 
@@ -412,8 +428,11 @@ def test_claims_report_grade_binding_section_against_real_vault():
 
 
 def _run_all() -> int:
-    tests = [(name, fn) for name, fn in sorted(globals().items())
-             if name.startswith("test_") and callable(fn)]
+    tests = [
+        (name, fn)
+        for name, fn in sorted(globals().items())
+        if name.startswith("test_") and callable(fn)
+    ]
     failures = []
     for name, fn in tests:
         try:
