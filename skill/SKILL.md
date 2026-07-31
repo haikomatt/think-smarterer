@@ -1,16 +1,14 @@
 ---
 name: smart-notes
-version: 2.3.0
+version: 2.4.0
 description: >
   The operating manual and structure spec for an Obsidian vault, the
   single source of truth for how notes are written, so a session never has to
-  rescan the vault to match its conventions. Covers BOTH layers: operational notes
-  (plans, session-handoffs, progress logs, project indexes, outlines) and thinking
-  notes (fleeting, literature, permanent, structure/MOC); the frontmatter + status
-  schema; concurrency-safe writing (compare-and-swap via vault-write); and
-  vault-doctor health checks. Invoke when writing ANY note to the vault: planning
-  work, handing off a session, logging progress, capturing or promoting an idea,
-  or auditing health.
+  rescan the vault to match its conventions. Start with Common paths (fleeting,
+  permanent, plan/handoff, vault-doctor); advanced sections cover hypotheses,
+  compare-and-swap writes, and the durable outbox. Invoke when writing ANY note
+  to the vault: planning work, handing off a session, logging progress,
+  capturing or promoting an idea, or auditing health.
 allowed-tools:
   - Bash
   - Read
@@ -36,11 +34,13 @@ triggers:
 ---
 
 <!-- Source of truth: this repo's skill/ dir. -->
-<!-- Install this dir (or symlink it) into ~/.claude/skills/smart-notes/ so edits -->
-<!-- are live immediately. No deploy step; never cp onto a symlink target (that -->
-<!-- writes back through the link). git revert in the vault rolls back the live -->
-<!-- skill too, if you keep the skill dir inside the vault repo. -->
-<!-- Vault root: your Obsidian vault -->
+<!-- Install (symlink) into ~/.cursor/skills/smart-notes/ (Cursor) or -->
+<!-- ~/.claude/skills/smart-notes/ (Claude Code) so edits are live immediately. -->
+<!-- No deploy step; never cp onto a symlink target (that writes back through -->
+<!-- the link). git revert in this repo rolls back the live skill too. -->
+<!-- Vault root: your Obsidian vault ($SMART_NOTES_VAULT or --vault). -->
+<!-- Bin: $SMART_NOTES_BIN or <skill-install>/bin. -->
+<!-- Outbox: set VAULT_OUTBOX (~/.cursor/vault-outbox recommended for Cursor). -->
 
 # /smart-notes: vault operating manual
 
@@ -55,6 +55,28 @@ The vault has two layers:
   when the project ends.
 - **Thinking** (the slipbox): fleeting → literature → permanent → structure. Ideas
   that outlive any single project.
+
+**Read Common paths first.** Use Advanced sections only when the task needs a
+hypothesis dossier, multi-writer CAS, or the durable outbox.
+
+## Common paths (start here)
+
+Bin for shell tools (override with `$SMART_NOTES_BIN`):
+
+```bash
+BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"  # or ~/.claude/skills/smart-notes/bin
+```
+
+| Task | Do this |
+|---|---|
+| Capture a raw thought | Write a fleeting note in `00-Inbox/` from `references/fleeting-capture.md`. Fast and messy is fine. |
+| Promote an idea | Write one permanent note in `Permanent/` from `references/permanent-note.md` (title = a claim, one idea, >=1 `[[link]]`). Delete the fleeting original once processed. Tag `#digest` if the vault owner still needs to read it. |
+| Plan work / hand off a session | Project folder: `references/project-plan.md` or `references/session-handoff.md`. Link from the project's `00-INDEX.md`. |
+| Check vault health | `"$BIN"/vault-doctor.py --vault "${SMART_NOTES_VAULT:-.}"` — gate: a change must not increase broken-link count. |
+
+For most sessions that is enough. Skip Advanced unless the user asks to queue a
+hypothesis, you are under real multi-writer contention, or a write must survive
+session close via the outbox.
 
 ## Routing table: what am I writing?
 
@@ -167,8 +189,8 @@ Template for both: `references/project-closeout.md`.
 ### project-plan
 Sections, use what applies: **Goal · Context · Build order / Steps · Files to
 Touch · Exit criteria / Acceptance · Risks · Estimated timeline · Scope
-boundaries**, and end with a **`## CC Prompt (handoff)`** block: the ready-to-
-paste brief for the Claude Code session that will execute it. Template:
+boundaries**, and end with a **`## Agent prompt (handoff)`** block: the ready-to-
+paste brief for the agent session that will execute it. Template:
 `references/project-plan.md`.
 
 ### session-handoff
@@ -256,7 +278,7 @@ fields back: it never executes anything from frontmatter, deliberately,
 since the vault is multi-writer and an executable field would be an
 arbitrary-code-execution sink. A note with no `grade_binding` is unaffected.
 
-## Hypotheses (the testing pipeline)
+## Advanced: Hypotheses (the testing pipeline)
 
 A testable claim moves open-questions → hypothesis dossier → verified
 permanent note. The dossier lives in `Hypotheses/<claim-slug>.md`
@@ -289,14 +311,14 @@ robust → replicated → paper-grade`, full criteria in
   `superseded`), grouped by grade, so resolved claims stay visible without
   cluttering the open queue.
 
-## Writing safely under concurrency
+## Advanced: Writing safely under concurrency
 
-Other Claude sessions and Obsidian write this vault at the same time. To avoid
+Other agent sessions and Obsidian write this vault at the same time. To avoid
 silently clobbering a concurrent change, **write notes with compare-and-swap**,
 never blind overwrite:
 
 ```bash
-BIN=~/vault/Harness/Skills/smart-notes/bin
+BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"  # or ~/.claude/skills/smart-notes/bin
 # 1. read the current hash (empty string if the file is new)
 sha=$("$BIN"/vault-write.py --print-sha PATH)
 # 2. ...read PATH, produce the edited content into $new...
@@ -314,23 +336,26 @@ changes. Even if a non-skill writer clobbers something, every state is
 recoverable. For a **bulk restructure**, still run it only when the vault is
 quiet and `git status` before/after: CAS protects a single write, not a whole reorg.
 
-## Durability: never lose an unsaved write
+## Advanced: Durability: never lose an unsaved write
 
 The guard and CAS stop *clobbering*, but a write that can't land (vault busy, a
 conflict, a filesystem glitch) must not die with the session. So **persist to the
 outbox the moment vault-bound content exists**, before attempting the vault:
 
 ```bash
-BIN=~/vault/Harness/Skills/smart-notes/bin
+BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"  # or ~/.claude/skills/smart-notes/bin
+# optional: export VAULT_OUTBOX=~/.cursor/vault-outbox   # Cursor; Claude Code often uses ~/.claude/vault-outbox
 # new note:
 printf '%s' "$content" | "$BIN"/vault-outbox.py enqueue --target Permanent/foo.md --new
 # update (base on the sha you read):
 printf '%s' "$content" | "$BIN"/vault-outbox.py enqueue --target plan.md --base-sha "$sha"
 ```
 
-The outbox lives on durable, uncontended storage (`~/.claude/vault-outbox/`), so
-the enqueue always succeeds and **survives session close**. Then drain it into the
-vault (safe anytime, per-file CAS, no whole-vault lock needed):
+The outbox lives on durable, uncontended storage (override with `VAULT_OUTBOX`;
+recommend `~/.cursor/vault-outbox` for Cursor, or keep the tool default under
+`~/.claude/vault-outbox` for Claude Code), so the enqueue always succeeds and
+**survives session close**. Then drain it into the vault (safe anytime, per-file
+CAS, no whole-vault lock needed):
 
 ```bash
 "$BIN"/vault-outbox.py drain --vault ~/vault --commit   # apply + git-commit
@@ -339,15 +364,16 @@ vault (safe anytime, per-file CAS, no whole-vault lock needed):
 
 - **Drain on every `/smart-notes` invocation** and after finishing a batch of
   writes, so nothing lingers pending.
-- Conflicts (the base changed under you) go to `~/.claude/vault-outbox/conflict/`:
-  never dropped, never clobbered; resolve by re-reading and re-enqueuing.
-  A conflict that turns out redundant (someone else wrote the *same* bytes, e.g.
-  a double-promotion) is retired automatically: `drain` reconciles it, or run
-  `"$BIN"/vault-outbox.py reconcile --vault .`: content-sha matches on-disk, so
-  it's a pure no-op. Only genuinely divergent conflicts need a manual merge.
-- `SessionStart` / `SessionEnd` hooks in `~/.claude/settings.json` drain
-  automatically; the enqueue-on-generate discipline is what puts work there to be
-  drained.
+- Conflicts (the base changed under you) go to `$VAULT_OUTBOX/conflict/` (or the
+  default store's `conflict/`): never dropped, never clobbered; resolve by
+  re-reading and re-enqueuing. A conflict that turns out redundant (someone else
+  wrote the *same* bytes, e.g. a double-promotion) is retired automatically:
+  `drain` reconciles it, or run `"$BIN"/vault-outbox.py reconcile --vault .`:
+  content-sha matches on-disk, so it's a pure no-op. Only genuinely divergent
+  conflicts need a manual merge.
+- Optional session hooks (e.g. Claude Code `SessionStart` / `SessionEnd` in
+  `~/.claude/settings.json`) can drain automatically; the enqueue-on-generate
+  discipline is what puts work there to be drained.
 
 **Rule of thumb:** routine note/plan writes never need a quiet vault: enqueue +
 drain (per-file CAS) handles concurrency. Only a *bulk restructure* needs the
@@ -407,7 +433,7 @@ This is the signal that keeps a new insight from vanishing as just another node.
 ## Maintenance: vault-doctor
 
 ```bash
-BIN=~/vault/Harness/Skills/smart-notes/bin
+BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"  # or ~/.claude/skills/smart-notes/bin
 "$BIN"/vault-doctor.py --vault ~/vault   # add --full for untruncated lists
 ```
 
@@ -448,16 +474,24 @@ that gets deferred until the inbox is unmanageable.
 - Don't atomize operational notes (plans / logs / handoffs / CVs / lessons).
 - Don't bury a reusable idea in a log: extract to `Permanent/` and link.
 - Don't invent status values or frontmatter fields: use the schema above.
-- Don't blind-overwrite a vault file: use `vault-write.py` (CAS).
+- Don't blind-overwrite under multi-writer contention: use `vault-write.py` (CAS) — see Advanced.
 - **Archiving preserves reachability**: a file in `_Archive/` is still linkable via `[[basename]]` (resolves wherever it lives); keep the link and mark it `(archived)`, never strip a link to still-useful content.
 - No Luhmann numeric IDs; don't chase orphan count to zero.
 
 ## Quick reference
+
+**Common**
+
 | Task | Where |
 |---|---|
 | Plan / handoff / progress / index | `references/project-plan.md` · `session-handoff.md` · `progress-log.md` · `project-index.md` |
 | Permanent / literature / structure / fleeting | `references/permanent-note.md` · `literature-note.md` · `structure-note.md` · `fleeting-capture.md` |
+| Health check / gate | `bin/vault-doctor.py` |
+
+**Advanced** (only when needed)
+
+| Task | Where |
+|---|---|
 | Hypothesis dossier + rubric | `references/hypothesis-dossier.md` · `methodology/empirical-robustness-standard.md` |
 | Concurrency-safe write | `bin/vault-write.py` |
 | Durable write + retry (outbox) | `bin/vault-outbox.py` (enqueue / drain) |
-| Health check / gate | `bin/vault-doctor.py` |
