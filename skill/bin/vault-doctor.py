@@ -732,10 +732,23 @@ def hypotheses_report(vault: Path, stale_days: int) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--vault")
-    ap.add_argument("--json", action="store_true")
-    ap.add_argument("--full", action="store_true")
+    ap = argparse.ArgumentParser(
+        description="Health report for an Obsidian vault (broken links, orphans, claims, graph)."
+    )
+    ap.add_argument(
+        "--vault",
+        help="vault root (default: $SMART_NOTES_VAULT, else nearest .obsidian ancestor, else cwd)",
+    )
+    ap.add_argument(
+        "--json",
+        action="store_true",
+        help="print a machine-readable summary block (for diffing batches)",
+    )
+    ap.add_argument(
+        "--full",
+        action="store_true",
+        help="do not truncate broken-link / orphan / oversized lists",
+    )
     ap.add_argument("--graph", action="store_true", help="graph connectivity report")
     ap.add_argument(
         "--claims", action="store_true", help="epistemic-status + staleness report"
