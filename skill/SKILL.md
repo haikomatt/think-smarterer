@@ -1,16 +1,14 @@
 ---
 name: smart-notes
-version: 2.3.0
+version: 2.4.0
 description: >
   The operating manual and structure spec for an Obsidian vault, the
   single source of truth for how notes are written, so a session never has to
-  rescan the vault to match its conventions. Covers BOTH layers: operational notes
-  (plans, session-handoffs, progress logs, project indexes, outlines) and thinking
-  notes (fleeting, literature, permanent, structure/MOC); the frontmatter + status
-  schema; concurrency-safe writing (compare-and-swap via vault-write); and
-  vault-doctor health checks. Invoke when writing ANY note to the vault: planning
-  work, handing off a session, logging progress, capturing or promoting an idea,
-  or auditing health.
+  rescan the vault to match its conventions. Start with Common paths (fleeting,
+  permanent, plan/handoff, vault-doctor); advanced sections cover hypotheses,
+  compare-and-swap writes, and the durable outbox. Invoke when writing ANY note
+  to the vault: planning work, handing off a session, logging progress,
+  capturing or promoting an idea, or auditing health.
 allowed-tools:
   - Bash
   - Read
@@ -57,6 +55,28 @@ The vault has two layers:
   when the project ends.
 - **Thinking** (the slipbox): fleeting → literature → permanent → structure. Ideas
   that outlive any single project.
+
+**Read Common paths first.** Use Advanced sections only when the task needs a
+hypothesis dossier, multi-writer CAS, or the durable outbox.
+
+## Common paths (start here)
+
+Bin for shell tools (override with `$SMART_NOTES_BIN`):
+
+```bash
+BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"  # or ~/.claude/skills/smart-notes/bin
+```
+
+| Task | Do this |
+|---|---|
+| Capture a raw thought | Write a fleeting note in `00-Inbox/` from `references/fleeting-capture.md`. Fast and messy is fine. |
+| Promote an idea | Write one permanent note in `Permanent/` from `references/permanent-note.md` (title = a claim, one idea, >=1 `[[link]]`). Delete the fleeting original once processed. Tag `#digest` if the vault owner still needs to read it. |
+| Plan work / hand off a session | Project folder: `references/project-plan.md` or `references/session-handoff.md`. Link from the project's `00-INDEX.md`. |
+| Check vault health | `"$BIN"/vault-doctor.py --vault "${SMART_NOTES_VAULT:-.}"` — gate: a change must not increase broken-link count. |
+
+For most sessions that is enough. Skip Advanced unless the user asks to queue a
+hypothesis, you are under real multi-writer contention, or a write must survive
+session close via the outbox.
 
 ## Routing table: what am I writing?
 
@@ -258,7 +278,7 @@ fields back: it never executes anything from frontmatter, deliberately,
 since the vault is multi-writer and an executable field would be an
 arbitrary-code-execution sink. A note with no `grade_binding` is unaffected.
 
-## Hypotheses (the testing pipeline)
+## Advanced: Hypotheses (the testing pipeline)
 
 A testable claim moves open-questions → hypothesis dossier → verified
 permanent note. The dossier lives in `Hypotheses/<claim-slug>.md`
@@ -291,7 +311,7 @@ robust → replicated → paper-grade`, full criteria in
   `superseded`), grouped by grade, so resolved claims stay visible without
   cluttering the open queue.
 
-## Writing safely under concurrency
+## Advanced: Writing safely under concurrency
 
 Other agent sessions and Obsidian write this vault at the same time. To avoid
 silently clobbering a concurrent change, **write notes with compare-and-swap**,
@@ -316,7 +336,7 @@ changes. Even if a non-skill writer clobbers something, every state is
 recoverable. For a **bulk restructure**, still run it only when the vault is
 quiet and `git status` before/after: CAS protects a single write, not a whole reorg.
 
-## Durability: never lose an unsaved write
+## Advanced: Durability: never lose an unsaved write
 
 The guard and CAS stop *clobbering*, but a write that can't land (vault busy, a
 conflict, a filesystem glitch) must not die with the session. So **persist to the
@@ -454,16 +474,24 @@ that gets deferred until the inbox is unmanageable.
 - Don't atomize operational notes (plans / logs / handoffs / CVs / lessons).
 - Don't bury a reusable idea in a log: extract to `Permanent/` and link.
 - Don't invent status values or frontmatter fields: use the schema above.
-- Don't blind-overwrite a vault file: use `vault-write.py` (CAS).
+- Don't blind-overwrite under multi-writer contention: use `vault-write.py` (CAS) — see Advanced.
 - **Archiving preserves reachability**: a file in `_Archive/` is still linkable via `[[basename]]` (resolves wherever it lives); keep the link and mark it `(archived)`, never strip a link to still-useful content.
 - No Luhmann numeric IDs; don't chase orphan count to zero.
 
 ## Quick reference
+
+**Common**
+
 | Task | Where |
 |---|---|
 | Plan / handoff / progress / index | `references/project-plan.md` · `session-handoff.md` · `progress-log.md` · `project-index.md` |
 | Permanent / literature / structure / fleeting | `references/permanent-note.md` · `literature-note.md` · `structure-note.md` · `fleeting-capture.md` |
+| Health check / gate | `bin/vault-doctor.py` |
+
+**Advanced** (only when needed)
+
+| Task | Where |
+|---|---|
 | Hypothesis dossier + rubric | `references/hypothesis-dossier.md` · `methodology/empirical-robustness-standard.md` |
 | Concurrency-safe write | `bin/vault-write.py` |
 | Durable write + retry (outbox) | `bin/vault-outbox.py` (enqueue / drain) |
-| Health check / gate | `bin/vault-doctor.py` |
