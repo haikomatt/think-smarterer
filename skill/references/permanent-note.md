@@ -12,13 +12,12 @@ SKILL.md "The digest frontier".
 ---
 tags: [<topic>, <topic>]
 
-# Optional grade-binding invariant (see SKILL.md "Claim status"): grade_binding and
-# grade_binding_id are written once by hand at grading time; the external writer keyed
-# on grade_binding_id fills grade_binding_result/grade_binding_checked, never by hand.
+# Optional grade-binding invariant (see SKILL.md "Claim status"): grade_binding is
+# authored once by hand at grading time; grade_binding_result/grade_binding_checked
+# are written only by `vault-grade-record.py` when you record an experiment's outcome.
 # grade_binding: "<invariant, one line>"
-# grade_binding_id: <stable-slug the external writer matches on>
-# grade_binding_result: pass          # pass | fail   (written by the external writer)
-# grade_binding_checked: <YYYY-MM-DD>                 (written by the external writer)
+# grade_binding_result: pass          # pass | fail   (written by vault-grade-record.py)
+# grade_binding_checked: <YYYY-MM-DD>                 (written by vault-grade-record.py)
 ---
 
 # <The claim, as a full sentence you could agree or disagree with>

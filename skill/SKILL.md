@@ -246,20 +246,27 @@ A companion `grade:` field records evidence strength on the ladder
 on both the hypothesis dossier and the permanent note it distils into; full
 criteria per rung are in [[empirical-robustness-standard]].
 
-Optionally, a permanent note's grade can be bound to an external invariant:
-`grade_binding` is a one-line, human-authored description written once, at
-grading time, of the invariant the grade depends on. An optional
-`grade_binding_id` (a stable machine-readable slug) lets the external writer
-find which notes it owns by id rather than by matching the prose, which is
-free to be reworded; a note that declares `grade_binding` but no
-`grade_binding_id` is never auto-written to and simply stays `unverified`.
-`grade_binding_result` (`pass`/`fail`) and `grade_binding_checked`
-(`YYYY-MM-DD`) are written back by whatever external system owns the check
-(for example a CI job), never by hand and never by vault-doctor. vault-doctor
-only ever *reads* these fields back: it never executes anything from
-frontmatter, deliberately, since the vault is multi-writer and an executable
-field would be an arbitrary-code-execution sink. A note with no
-`grade_binding` is unaffected.
+Optionally, a permanent note's grade can be bound to **external evidence**:
+the kind that lives outside the vault (an experiment result, an external
+tool's health) and so cannot be re-derived from vault state, which is exactly
+what the staleness checks above miss. `grade_binding` is a one-line,
+human-authored description, written once at grading time, of the invariant the
+grade rests on. The note reads as `unverified` until you run the experiment
+and record its outcome:
+
+```bash
+"$BIN"/vault-grade-record.py <note> --result pass|fail
+```
+
+That writes `grade_binding_result` (`pass`/`fail`) and `grade_binding_checked`
+(`YYYY-MM-DD`) into the fence via a safe compare-and-swap. You author the
+binding; the command only ever records a verdict, and only on a note that
+already declares one. vault-doctor only ever *reads* those fields back and
+never executes anything from frontmatter (the vault is multi-writer; an
+executable field would be an arbitrary-code-execution sink). As the verdict
+ages past the staleness horizon, `--claims` re-flags the note, so re-running
+the experiment and re-recording closes the loop. A note with no `grade_binding`
+is unaffected.
 
 ## Hypotheses (the testing pipeline)
 
