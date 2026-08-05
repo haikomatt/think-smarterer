@@ -326,6 +326,26 @@ changes. Even if a non-skill writer clobbers something, every state is
 recoverable. For a **bulk restructure**, still run it only when the vault is
 quiet and `git status` before/after: CAS protects a single write, not a whole reorg.
 
+### Writing through the MCP tools (`mcp__obsidian__*`)
+
+If you write through Obsidian MCP tools (the Obsidian Local REST API plugin's
+`vault_write`, `vault_patch`, etc.), note they reach the vault by a **different
+path from the scripts above**, with different guarantees:
+
+- **`vault_write` (whole-file) and `vault_append` are unconditional overwrites**:
+  no precondition, no version check. Treat `vault_write` as **create-only**: use
+  it only for a genuinely new file, never to update an existing note. Updating
+  through it blind-clobbers a concurrent edit, and Obsidian's in-memory buffer for
+  an open file can silently revert the write on its next flush.
+- **To update an existing note via MCP, use `vault_patch` with a version token**
+  (plugin **v5+**): read the current `version` (a content hash) from
+  `vault_get_document_map`, then pass it as `vault_patch`'s **`ifMatch`**
+  parameter. If the note changed since, the patch fails with a precondition error
+  and leaves the file untouched: the MCP path's compare-and-swap.
+- **When in doubt, or for a whole-file rewrite, use the `vault-write.py` CAS path
+  above.** It writes to disk directly with a content-hash precondition and is the
+  guaranteed-safe option regardless of the MCP layer.
+
 ## Durability: never lose an unsaved write
 
 The guard and CAS stop *clobbering*, but a write that can't land (vault busy, a
