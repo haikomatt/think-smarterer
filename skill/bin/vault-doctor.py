@@ -39,8 +39,11 @@ IGNORE_DIRS = {
     ".obsidian",
     ".trash",
     ".git",
-    "_meta",
-}  # _meta = tooling/reports, not content
+}
+# Indexed so links INTO them still resolve, but never scanned or counted:
+# tooling and reports, not content. Pruning these before the resolution index
+# was built is what made a content note citing a real _meta/ plan look broken.
+NON_CONTENT_DIRS = {"_meta"}
 # Folders whose notes are exempt from the "orphan" and "oversized" nags
 # (they are meant to be standalone / long): logs, archives, reference material.
 QUIET_ORPHAN_HINTS = ("_archive", "career/", "clients/", "learning/japanese", "people/")
@@ -69,15 +72,31 @@ def find_vault(explicit: str | None) -> Path:
     return here
 
 
-def iter_files(vault: Path):
+def iter_files(vault: Path, include_non_content: bool = False):
+    """Walk the vault's files, skipping IGNORE_DIRS.
+
+    include_non_content also yields NON_CONTENT_DIRS: pass it when building a
+    link-resolution index, leave it off when choosing which notes to report on.
+    """
+    skip = IGNORE_DIRS if include_non_content else IGNORE_DIRS | NON_CONTENT_DIRS
     for root, dirs, files in os.walk(vault):
-        dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+        dirs[:] = [d for d in dirs if d not in skip]
         for f in files:
             yield Path(root) / f
 
 
 def norm(s: str) -> str:
     return s.strip().lstrip("./").lower()
+
+
+def strip_link_decorations(target: str) -> str:
+    """Strip alias and heading suffixes from a wikilink target, Obsidian-style.
+
+    Inside a markdown table the alias pipe has to be written `\\|`, so unescape
+    before splitting: on a bare "|" split the target keeps a trailing backslash
+    and never resolves.
+    """
+    return target.replace("\\|", "|").split("|", 1)[0].split("#", 1)[0].strip()
 
 
 def _resolve_note(target, by_rel, by_base):
@@ -89,7 +108,7 @@ def _resolve_note(target, by_rel, by_base):
     --claims and --graph reports, which consider md notes only and take the
     first match.
     """
-    t = target.split("|", 1)[0].split("#", 1)[0].strip().lstrip("./").lower()
+    t = norm(strip_link_decorations(target))
     parts = [p for p in t.split("/") if p not in ("", ".", "..")]
     t = "/".join(parts)
     if not t:
@@ -795,6 +814,9 @@ def main() -> int:
     if args.hypotheses:
         return hypotheses_report(vault, args.hyp_stale_days)
 
+    # Index over everything, including NON_CONTENT_DIRS, so links into tooling
+    # notes resolve; scan, count and nag about content notes only.
+    index_files = list(iter_files(vault, include_non_content=True))
     all_files = list(iter_files(vault))
     md_files = [f for f in all_files if f.suffix.lower() == ".md"]
 
@@ -802,7 +824,7 @@ def main() -> int:
     by_relpath: dict[str, Path] = {}  # "projects/x" and "projects/x.md"
     by_basename: dict[str, list[Path]] = {}  # "x" -> [paths] (md only)
     by_fullname: dict[str, list[Path]] = {}  # "x.png" -> [paths] (all files)
-    for f in all_files:
+    for f in index_files:
         rel = norm(str(f.relative_to(vault)))
         by_relpath[rel] = f
         if rel.endswith(".md"):
@@ -829,7 +851,7 @@ def main() -> int:
             if in_fence:
                 continue
             for _embed, raw in WIKILINK.findall(INLINE_CODE.sub("", line)):
-                target = raw.split("|", 1)[0].split("#", 1)[0].strip()
+                target = strip_link_decorations(raw)
                 if not target:
                     continue
                 outbound[f] += 1
