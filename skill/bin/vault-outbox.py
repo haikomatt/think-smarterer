@@ -4,7 +4,7 @@
 Solves the "rejected write dies with the session" problem. The moment a session
 produces vault-bound content it ENQUEUEs it here: to durable, uncontended storage
 (~/.claude/vault-outbox by default; override with VAULT_OUTBOX, e.g.
-~/.cursor/vault-outbox for Cursor — NOT the volatile/contended vault). Later, DRAIN applies
+~/.cursor/vault-outbox for Cursor, NOT the volatile/contended vault). Later, DRAIN applies
 pending entries to the vault via compare-and-swap and commits them to git. Because
 entries live on durable storage, closing a session never loses them; the next
 drain retries. Applies are idempotent, and a write whose base no longer matches is

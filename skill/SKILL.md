@@ -72,7 +72,7 @@ BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"  # or ~/.claude/s
 | Capture a raw thought | Write a fleeting note in `00-Inbox/` from `references/fleeting-capture.md`. Fast and messy is fine. |
 | Promote an idea | Write one permanent note in `Permanent/` from `references/permanent-note.md` (title = a claim, one idea, >=1 `[[link]]`). Delete the fleeting original once processed. Tag `#digest` if the vault owner still needs to read it. |
 | Plan work / hand off a session | Project folder: `references/project-plan.md` or `references/session-handoff.md`. Link from the project's `00-INDEX.md`. |
-| Check vault health | `"$BIN"/vault-doctor.py --vault "${SMART_NOTES_VAULT:-.}"` — gate: a change must not increase broken-link count. |
+| Check vault health | `"$BIN"/vault-doctor.py --vault "${SMART_NOTES_VAULT:-.}"`; gate: a change must not increase broken-link count. |
 
 For most sessions that is enough. Skip Advanced unless the user asks to queue a
 hypothesis, you are under real multi-writer contention, or a write must survive
@@ -506,7 +506,7 @@ that gets deferred until the inbox is unmanageable.
 - Don't atomize operational notes (plans / logs / handoffs / CVs / lessons).
 - Don't bury a reusable idea in a log: extract to `Permanent/` and link.
 - Don't invent status values or frontmatter fields: use the schema above.
-- Don't blind-overwrite under multi-writer contention: use `vault-write.py` (CAS) — see Advanced.
+- Don't blind-overwrite under multi-writer contention: use `vault-write.py` (CAS), see Advanced.
 - **Archiving preserves reachability**: a file in `_Archive/` is still linkable via `[[basename]]` (resolves wherever it lives); keep the link and mark it `(archived)`, never strip a link to still-useful content.
 - No Luhmann numeric IDs; don't chase orphan count to zero.
 
