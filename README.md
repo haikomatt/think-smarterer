@@ -1,12 +1,14 @@
 # think-smarterer
 
 A portable, plain-markdown knowledge and research-methodology system for
-Obsidian and AI coding agents. No runtime, no SDK, no lock-in: everything here
-is markdown files, frontmatter conventions, and a handful of small Python
-scripts that operate on plain text files.
+[Obsidian](https://obsidian.md/download) and AI coding agents. No runtime, no
+SDK, no lock-in: everything here is markdown files, frontmatter conventions,
+and a handful of small Python scripts that operate on plain text files.
 
 It originated as one person's Obsidian vault methodology, refined over real
-use.
+use. If you don't have Obsidian yet, [download it here](https://obsidian.md/download)
+(notes are plain markdown, so any editor works; Obsidian is the intended UI
+for the graph, tags, and daily reading).
 
 ## What's in here
 
@@ -18,14 +20,17 @@ skill/
 methodology/
   empirical-robustness-standard.md   the five-rung evidence-grading ladder
   notes/                     six backing notes for the standard's imported criteria
+scripts/
+  init-vault.sh              scaffold a minimal Obsidian vault
 ```
 
-`skill/` is a Claude Code skill: the note-taking and research-hygiene system
-an AI agent (or you) uses when writing into an Obsidian vault. `methodology/`
-is the standalone evidence-grading standard the skill's hypothesis pipeline
-grades claims against. You can use either half without the other: the skill
-works with any grading standard, and the standard is a general-purpose
-research-rigor rubric you can apply outside Obsidian entirely.
+`skill/` is an agent skill (Cursor or Claude Code): the note-taking and
+research-hygiene system an AI agent (or you) uses when writing into an
+Obsidian vault. `methodology/` is the standalone evidence-grading standard the
+skill's hypothesis pipeline grades claims against. You can use either half
+without the other: the skill works with any grading standard, and the standard
+is a general-purpose research-rigor rubric you can apply outside Obsidian
+entirely.
 
 ## Why plain markdown
 
@@ -39,17 +44,57 @@ tools rather than locked into one vault's plugin config.
 
 ## Installing the skill
 
-Copy (or symlink) `skill/` into your agent's skills directory, e.g. for
-Claude Code:
+Copy (or symlink) `skill/` into your agent's skills directory. Symlinking
+rather than copying means edits to the skill (or `git revert` in this repo)
+stay live without a separate deploy step.
+
+### Cursor
 
 ```bash
-ln -s /path/to/think-smarterer/skill ~/.claude/skills/smart-notes
+mkdir -p ~/.cursor/skills
+ln -s /path/to/think-smarterer/skill ~/.cursor/skills/smart-notes
+export SMART_NOTES_VAULT=~/path/to/your-vault
+# optional durable outbox for Cursor:
+# export VAULT_OUTBOX=~/.cursor/vault-outbox
 ```
 
-Symlinking rather than copying means edits to the skill (or `git revert` in
-this repo) stay live without a separate deploy step. Set `SMART_NOTES_VAULT`
-or pass `--vault` to point the `bin/` tools at your actual Obsidian vault
-(referred to as `~/vault` throughout the docs; substitute your real path).
+### Claude Code
+
+```bash
+mkdir -p ~/.claude/skills
+ln -s /path/to/think-smarterer/skill ~/.claude/skills/smart-notes
+export SMART_NOTES_VAULT=~/path/to/your-vault
+```
+
+Set `SMART_NOTES_VAULT` or pass `--vault` to point the `bin/` tools at your
+actual Obsidian vault (referred to as `~/vault` throughout the docs; substitute
+your real path). Optionally set `SMART_NOTES_BIN` to the installed skill's
+`bin/` directory if you want a short alias in shell snippets.
+
+## Quick start (15 minutes)
+
+1. [Download Obsidian](https://obsidian.md/download) if you don't have it yet.
+2. Install the skill for your agent (Cursor or Claude Code, above).
+3. Scaffold a minimal vault (creates folders + stub indexes; skips existing files):
+
+```bash
+./scripts/init-vault.sh ~/path/to/your-vault
+export SMART_NOTES_VAULT=~/path/to/your-vault
+```
+
+4. Open that folder as a vault in Obsidian (**Open folder as vault**).
+5. In your agent, ask it to capture a thought as a fleeting note, then promote
+   one idea to a permanent note (it will follow `skill/SKILL.md` and the
+   templates in `skill/references/`).
+6. Run a health check:
+
+```bash
+BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"   # or ~/.claude/skills/smart-notes/bin
+python3 "$BIN"/vault-doctor.py --vault "$SMART_NOTES_VAULT"
+```
+
+That is enough to start. Hypotheses, compare-and-swap writes, and the outbox
+are documented in `skill/SKILL.md` when you need them.
 
 ## The note types
 
@@ -106,11 +151,12 @@ All commands accept `--vault PATH` (or `$SMART_NOTES_VAULT`, or auto-detect
 via the nearest `.obsidian` ancestor).
 
 ```bash
-vault-doctor.py --vault ~/vault              # broken links, orphans, oversized notes, duplicates
-vault-doctor.py --vault ~/vault --claims     # epistemic status + staleness (source doc newer than note)
-vault-doctor.py --vault ~/vault --graph      # connectivity: islands, isolated notes, cross-silo links
-vault-doctor.py --vault ~/vault --digest     # #digest review-frontier leaks (git-based)
-vault-doctor.py --vault ~/vault --hypotheses # open queue by grade, stale dossiers, grade-integrity
+BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"
+python3 "$BIN"/vault-doctor.py --vault ~/vault              # broken links, orphans, oversized notes, duplicates
+python3 "$BIN"/vault-doctor.py --vault ~/vault --claims     # epistemic status + staleness
+python3 "$BIN"/vault-doctor.py --vault ~/vault --graph      # connectivity
+python3 "$BIN"/vault-doctor.py --vault ~/vault --digest     # #digest review-frontier leaks
+python3 "$BIN"/vault-doctor.py --vault ~/vault --hypotheses # open queue, stale dossiers, grade-integrity
 ```
 
 The hard gate for any restructuring: a batch of changes must **not increase**
@@ -125,12 +171,15 @@ once):
 - `vault-outbox.py`: a durable write-ahead queue. Enqueue vault-bound
   content the moment it exists, so a rejected or interrupted write survives
   session close; drain it into the vault later (safe anytime, per-file CAS).
+  Override the store with `VAULT_OUTBOX` (recommended:
+  `~/.cursor/vault-outbox` for Cursor; Claude Code users often keep the
+  default under `~/.claude/vault-outbox`).
 
 ## Note
 
 This repo is the generalized methodology and tooling, not a working vault. It
-ships templates, not populated notes, and the scripts operate on whatever
-Obsidian vault you point them at.
+ships templates and a scaffold script (`scripts/init-vault.sh`), not populated
+notes. The scripts operate on whatever Obsidian vault you point them at.
 
 ## Credits and influences
 

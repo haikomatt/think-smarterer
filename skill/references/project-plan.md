@@ -35,8 +35,8 @@ turned up, or state plainly that the search was run and found nothing.>
 ## Risks
 - <risk>: <mitigation>
 
-## CC Prompt (handoff)
-> <ready-to-paste brief for the Claude Code session that will execute this:
+## Agent prompt (handoff)
+> <ready-to-paste brief for the agent session that will execute this:
 > what to read first, the task, the constraints, and the definition of done.>
 ```
 
@@ -46,7 +46,7 @@ turned up, or state plainly that the search was run and found nothing.>
 - Keep **status** current: it's how other sessions (and you) know whether to act.
 - When this plan replaces an earlier one, add `supersedes: "[[old-plan]]"` and
   mark the old plan in the project's `00-INDEX`.
-- The `## CC Prompt (handoff)` block is the house convention for handing a plan to
+- The `## Agent prompt (handoff)` block is the house convention for handing a plan to
   an execution session: always include it on an executable plan.
 - If a step surfaces a *reusable* insight (true beyond this project), extract it to
   `Permanent/` and `[[link]]` it here: don't let it live only inside the plan.

@@ -1,6 +1,6 @@
 # Template: session handoff
 
-End-of-session state so the next session (you or a fresh Claude) can resume cold.
+End-of-session state so the next session (you or a fresh agent) can resume cold.
 Lives in the project's folder. Filename: `session-handoff-<YYYY-MM-DD>-<topic>.md`.
 Link it from the project's `00-INDEX`.
 
