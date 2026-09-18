@@ -3,14 +3,15 @@
 
 Solves the "rejected write dies with the session" problem. The moment a session
 produces vault-bound content it ENQUEUEs it here: to durable, uncontended storage
-(~/.claude/vault-outbox by default; override with VAULT_OUTBOX, e.g.
-~/.cursor/vault-outbox for Cursor, NOT the volatile/contended vault). Later, DRAIN applies
-pending entries to the vault via compare-and-swap and commits them to git. Because
-entries live on durable storage, closing a session never loses them; the next
-drain retries. Applies are idempotent, and a write whose base no longer matches is
+(under whichever agent dir is in use, ~/.claude/vault-outbox or
+~/.cursor/vault-outbox; override with VAULT_OUTBOX. NOT the volatile/contended
+vault). Later, DRAIN applies pending entries to the vault via compare-and-swap
+and commits them to git. Because entries live on durable storage, closing a
+session never loses them; the next drain retries. Applies are idempotent, and a write whose base no longer matches is
 moved to conflict/ (never dropped, never clobbered).
 
-Store layout (default ~/.claude/vault-outbox; set VAULT_OUTBOX to relocate):
+Store layout (default ~/.claude/vault-outbox or ~/.cursor/vault-outbox,
+whichever agent dir exists; set VAULT_OUTBOX to relocate):
     pending/   entries awaiting apply
     applied/   successfully written to the vault
     conflict/  base changed under us: needs a human/AI merge
@@ -42,7 +43,26 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-STORE = Path(os.environ.get("VAULT_OUTBOX", Path.home() / ".claude" / "vault-outbox"))
+AGENT_DIRS = (".claude", ".cursor")
+
+
+def _default_store() -> Path:
+    """The store under whichever agent dir is in use, preferring an existing store."""
+    candidates = [Path.home() / d / "vault-outbox" for d in AGENT_DIRS]
+    for store in candidates:
+        if store.is_dir():
+            return store
+    for agent_dir, store in zip(AGENT_DIRS, candidates):
+        if (Path.home() / agent_dir).is_dir():
+            return store
+    return candidates[0]
+
+
+STORE = (
+    Path(os.environ["VAULT_OUTBOX"])
+    if os.environ.get("VAULT_OUTBOX")
+    else _default_store()
+)
 
 
 def _now() -> str:

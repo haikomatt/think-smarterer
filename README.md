@@ -54,8 +54,6 @@ stay live without a separate deploy step.
 mkdir -p ~/.cursor/skills
 ln -s /path/to/think-smarterer/skill ~/.cursor/skills/smart-notes
 export SMART_NOTES_VAULT=~/path/to/your-vault
-# optional durable outbox for Cursor:
-# export VAULT_OUTBOX=~/.cursor/vault-outbox
 ```
 
 ### Claude Code
@@ -68,8 +66,9 @@ export SMART_NOTES_VAULT=~/path/to/your-vault
 
 Set `SMART_NOTES_VAULT` or pass `--vault` to point the `bin/` tools at your
 actual Obsidian vault (referred to as `~/vault` throughout the docs; substitute
-your real path). Optionally set `SMART_NOTES_BIN` to the installed skill's
-`bin/` directory if you want a short alias in shell snippets.
+your real path). The shell snippets in the docs resolve the skill's `bin/`
+directory under either agent; set `SMART_NOTES_BIN` to point at it explicitly
+if you installed somewhere else.
 
 ## Quick start (15 minutes)
 
@@ -89,7 +88,7 @@ export SMART_NOTES_VAULT=~/path/to/your-vault
 6. Run a health check:
 
 ```bash
-BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"   # or ~/.claude/skills/smart-notes/bin
+BIN="${SMART_NOTES_BIN:-$(ls -d ~/.claude/skills/smart-notes/bin ~/.cursor/skills/smart-notes/bin 2>/dev/null | head -1)}"
 python3 "$BIN"/vault-doctor.py --vault "$SMART_NOTES_VAULT"
 ```
 
@@ -151,7 +150,7 @@ All commands accept `--vault PATH` (or `$SMART_NOTES_VAULT`, or auto-detect
 via the nearest `.obsidian` ancestor).
 
 ```bash
-BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"
+BIN="${SMART_NOTES_BIN:-$(ls -d ~/.claude/skills/smart-notes/bin ~/.cursor/skills/smart-notes/bin 2>/dev/null | head -1)}"
 python3 "$BIN"/vault-doctor.py --vault ~/vault              # broken links, orphans, oversized notes, duplicates
 python3 "$BIN"/vault-doctor.py --vault ~/vault --claims     # epistemic status + staleness
 python3 "$BIN"/vault-doctor.py --vault ~/vault --graph      # connectivity
@@ -171,9 +170,9 @@ once):
 - `vault-outbox.py`: a durable write-ahead queue. Enqueue vault-bound
   content the moment it exists, so a rejected or interrupted write survives
   session close; drain it into the vault later (safe anytime, per-file CAS).
-  Override the store with `VAULT_OUTBOX` (recommended:
-  `~/.cursor/vault-outbox` for Cursor; Claude Code users often keep the
-  default under `~/.claude/vault-outbox`).
+  The store sits under whichever agent dir is in use
+  (`~/.claude/vault-outbox` or `~/.cursor/vault-outbox`); set `VAULT_OUTBOX`
+  to relocate it.
 
 ## Note
 

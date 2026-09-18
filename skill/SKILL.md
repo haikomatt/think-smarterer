@@ -40,7 +40,7 @@ triggers:
 <!-- the link). git revert in this repo rolls back the live skill too. -->
 <!-- Vault root: your Obsidian vault ($SMART_NOTES_VAULT or --vault). -->
 <!-- Bin: $SMART_NOTES_BIN or <skill-install>/bin. -->
-<!-- Outbox: set VAULT_OUTBOX (~/.cursor/vault-outbox recommended for Cursor). -->
+<!-- Outbox: ~/.claude or ~/.cursor vault-outbox; set VAULT_OUTBOX to relocate. -->
 
 # /smart-notes: vault operating manual
 
@@ -61,10 +61,11 @@ hypothesis dossier, multi-writer CAS, or the durable outbox.
 
 ## Common paths (start here)
 
-Bin for shell tools (override with `$SMART_NOTES_BIN`):
+Bin for shell tools. This resolves whichever agent the skill is installed
+under, Claude Code or Cursor; set `$SMART_NOTES_BIN` to override:
 
 ```bash
-BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"  # or ~/.claude/skills/smart-notes/bin
+BIN="${SMART_NOTES_BIN:-$(ls -d ~/.claude/skills/smart-notes/bin ~/.cursor/skills/smart-notes/bin 2>/dev/null | head -1)}"
 ```
 
 | Task | Do this |
@@ -330,7 +331,7 @@ silently clobbering a concurrent change, **write notes with compare-and-swap**,
 never blind overwrite:
 
 ```bash
-BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"  # or ~/.claude/skills/smart-notes/bin
+BIN="${SMART_NOTES_BIN:-$(ls -d ~/.claude/skills/smart-notes/bin ~/.cursor/skills/smart-notes/bin 2>/dev/null | head -1)}"
 # 1. read the current hash (empty string if the file is new)
 sha=$("$BIN"/vault-write.py --print-sha PATH)
 # 2. ...read PATH, produce the edited content into $new...
@@ -375,17 +376,16 @@ conflict, a filesystem glitch) must not die with the session. So **persist to th
 outbox the moment vault-bound content exists**, before attempting the vault:
 
 ```bash
-BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"  # or ~/.claude/skills/smart-notes/bin
-# optional: export VAULT_OUTBOX=~/.cursor/vault-outbox   # Cursor; Claude Code often uses ~/.claude/vault-outbox
+BIN="${SMART_NOTES_BIN:-$(ls -d ~/.claude/skills/smart-notes/bin ~/.cursor/skills/smart-notes/bin 2>/dev/null | head -1)}"
 # new note:
 printf '%s' "$content" | "$BIN"/vault-outbox.py enqueue --target Permanent/foo.md --new
 # update (base on the sha you read):
 printf '%s' "$content" | "$BIN"/vault-outbox.py enqueue --target plan.md --base-sha "$sha"
 ```
 
-The outbox lives on durable, uncontended storage (override with `VAULT_OUTBOX`;
-recommend `~/.cursor/vault-outbox` for Cursor, or keep the tool default under
-`~/.claude/vault-outbox` for Claude Code), so the enqueue always succeeds and
+The outbox lives on durable, uncontended storage, under whichever agent dir is
+in use (`~/.claude/vault-outbox` or `~/.cursor/vault-outbox`; set
+`VAULT_OUTBOX` to relocate), so the enqueue always succeeds and
 **survives session close**. Then drain it into the vault (safe anytime, per-file
 CAS, no whole-vault lock needed):
 
@@ -396,8 +396,8 @@ CAS, no whole-vault lock needed):
 
 - **Drain on every `/smart-notes` invocation** and after finishing a batch of
   writes, so nothing lingers pending.
-- Conflicts (the base changed under you) go to `$VAULT_OUTBOX/conflict/` (or the
-  default store's `conflict/`): never dropped, never clobbered; resolve by
+- Conflicts (the base changed under you) go to the store's `conflict/`:
+  never dropped, never clobbered; resolve by
   re-reading and re-enqueuing. A conflict that turns out redundant (someone else
   wrote the *same* bytes, e.g. a double-promotion) is retired automatically:
   `drain` reconciles it, or run `"$BIN"/vault-outbox.py reconcile --vault .`:
@@ -465,7 +465,7 @@ This is the signal that keeps a new insight from vanishing as just another node.
 ## Maintenance: vault-doctor
 
 ```bash
-BIN="${SMART_NOTES_BIN:-$HOME/.cursor/skills/smart-notes/bin}"  # or ~/.claude/skills/smart-notes/bin
+BIN="${SMART_NOTES_BIN:-$(ls -d ~/.claude/skills/smart-notes/bin ~/.cursor/skills/smart-notes/bin 2>/dev/null | head -1)}"
 "$BIN"/vault-doctor.py --vault ~/vault   # add --full for untruncated lists
 ```
 
