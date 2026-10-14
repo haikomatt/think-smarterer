@@ -146,6 +146,25 @@ def test_plain_alias_and_heading_still_resolve() -> None:
     assert not _broken(_run(vault)), "plain alias/heading links must resolve"
 
 
+def test_dangling_symlink_is_skipped_not_fatal() -> None:
+    """A tracked symlink whose target exists only on another machine must not
+    crash the doctor. Seen live after syncing a vault between two machines."""
+    vault = Path(tempfile.mkdtemp(prefix="vault-doctor-links-symlink-"))
+    (vault / ".obsidian").mkdir()
+    _write(vault / "a.md", "# A\n\nSee [[b]].\n")
+    _write(vault / "b.md", "# B\n")
+    (vault / "Projects").mkdir()
+    (vault / "Projects" / "elsewhere.md").symlink_to(vault / "missing-target.md")
+    for extra in ([], ["--hypotheses"], ["--claims"], ["--graph"]):
+        proc = subprocess.run(
+            [sys.executable, str(DOCTOR), "--vault", str(vault), *extra],
+            capture_output=True, text=True,
+        )
+        assert "Traceback" not in proc.stderr, f"{extra}: {proc.stderr[-400:]}"
+        assert proc.returncode == 0, f"{extra}: exit {proc.returncode}"
+    assert not _broken(_run(vault)), "the live link must still resolve"
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
