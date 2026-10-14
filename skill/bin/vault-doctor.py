@@ -72,6 +72,9 @@ def find_vault(explicit: str | None) -> Path:
     return here
 
 
+_SKIPPED_DANGLING: set[Path] = set()
+
+
 def iter_files(vault: Path, include_non_content: bool = False):
     """Walk the vault's files, skipping IGNORE_DIRS.
 
@@ -82,7 +85,16 @@ def iter_files(vault: Path, include_non_content: bool = False):
     for root, dirs, files in os.walk(vault):
         dirs[:] = [d for d in dirs if d not in skip]
         for f in files:
-            yield Path(root) / f
+            path = Path(root) / f
+            if not path.exists():
+                # A symlink whose target lives on another machine, if you sync
+                # your vault between two. Reading it would raise; skip and say
+                # so once per run, since several reports walk the vault.
+                if path not in _SKIPPED_DANGLING:
+                    _SKIPPED_DANGLING.add(path)
+                    print(f"skip (dangling symlink): {path.relative_to(vault)}", file=sys.stderr)
+                continue
+            yield path
 
 
 def norm(s: str) -> str:
