@@ -125,6 +125,10 @@ def record_verdict(text: str, result: str, checked: date) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows pipes default to a legacy codepage; reports print non-ASCII.
+    for _s in (sys.stdout, sys.stderr):
+        if hasattr(_s, "reconfigure") and (_s.encoding or "").lower() not in ("utf-8", "utf8"):
+            _s.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(
         prog="vault-grade-record.py",
         description="Record a pass/fail grade-binding verdict onto an already-bound note.",

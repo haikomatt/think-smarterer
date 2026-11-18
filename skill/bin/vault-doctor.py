@@ -92,7 +92,7 @@ def iter_files(vault: Path, include_non_content: bool = False):
                 # so once per run, since several reports walk the vault.
                 if path not in _SKIPPED_DANGLING:
                     _SKIPPED_DANGLING.add(path)
-                    print(f"skip (dangling symlink): {path.relative_to(vault)}", file=sys.stderr)
+                    print(f"skip (dangling symlink): {path.relative_to(vault).as_posix()}", file=sys.stderr)
                 continue
             yield path
 
@@ -176,14 +176,14 @@ def claims_report(vault, stale_days):
     by_relpath = {}
     by_basename = defaultdict(list)
     for f in md_files:
-        rel_path = str(f.relative_to(vault)).lower()
+        rel_path = f.relative_to(vault).as_posix().lower()
         by_relpath[rel_path] = f
         by_relpath[rel_path[:-3]] = f
         by_basename[f.stem.lower()].append(f)
     notes = [
         f
         for f in md_files
-        if "permanent/" in str(f.relative_to(vault)).lower()
+        if "permanent/" in f.relative_to(vault).as_posix().lower()
         and not f.name.startswith("00-")
         and f.name.lower() != "readme.md"
     ]
@@ -223,7 +223,7 @@ def claims_report(vault, stale_days):
                 and source_note.stat().st_mtime > f.stat().st_mtime
             ):
                 stale.append((f, source_note))
-    rel = lambda f: str(f.relative_to(vault))
+    rel = lambda f: f.relative_to(vault).as_posix()
     print(f"# vault-doctor --claims  {vault}")
     print(f"claim notes: {len(notes)}")
     for status_name, count in by_status.most_common():
@@ -262,7 +262,7 @@ def claims_report(vault, stale_days):
 def graph_report(vault):
     """Graph connectivity: components (islands), isolated notes, cross-silo edges."""
     relpaths = [
-        str(f.relative_to(vault))
+        f.relative_to(vault).as_posix()
         for f in iter_files(vault)
         if f.suffix.lower() == ".md"
     ]
@@ -394,7 +394,7 @@ def digest_report(vault, window_days):
         return False
 
     def is_finding(f: Path) -> bool:
-        rel = str(f.relative_to(vault)).lower()
+        rel = f.relative_to(vault).as_posix().lower()
         return (
             ("permanent/" in rel or "literature/" in rel)
             and not f.name.startswith("00-")
@@ -438,7 +438,7 @@ def digest_report(vault, window_days):
         txt = f.read_text(encoding="utf-8", errors="replace")
         if has_digest(txt):
             continue  # in the frontier now, fine
-        rel = str(f.relative_to(vault))
+        rel = f.relative_to(vault).as_posix()
         info = add_info.get(rel)
         if info is None:
             uncommitted.append(f)  # not yet an Add, or renamed
@@ -452,7 +452,7 @@ def digest_report(vault, window_days):
             continue  # had #digest once → stripped = digested
         leaks.append((f, ct))
 
-    rel = lambda f: str(f.relative_to(vault))
+    rel = lambda f: f.relative_to(vault).as_posix()
     days = lambda ct: int((now - ct) // 86400)
     leaks.sort(key=lambda x: -x[1])
     print(f"# vault-doctor --digest  {vault}")
@@ -567,14 +567,14 @@ def _get_section(body: str, heading: str) -> str:
 
 
 def _is_dossier(f: Path, vault: Path, fm_block: str) -> bool:
-    rel = str(f.relative_to(vault)).lower()
+    rel = f.relative_to(vault).as_posix().lower()
     if rel.startswith("hypotheses/") and not f.name.startswith("00-"):
         return True
     return _frontmatter_field(fm_block, "type") == "hypothesis"
 
 
 def _is_graded_permanent(f: Path, vault: Path, fm_block: str) -> bool:
-    rel = str(f.relative_to(vault)).lower()
+    rel = f.relative_to(vault).as_posix().lower()
     if (
         "permanent/" not in rel
         or f.name.startswith("00-")
@@ -671,7 +671,7 @@ def _hypothesis_findings(vault: Path, stale_days: int, today: date) -> dict:
         if not is_dossier and not is_graded_permanent:
             continue
 
-        rel = str(f.relative_to(vault))
+        rel = f.relative_to(vault).as_posix()
         status = _frontmatter_field(fm_block, "status")
         grade = _frontmatter_field(fm_block, "grade")
         target_grade = _frontmatter_field(fm_block, "target_grade")
@@ -763,6 +763,10 @@ def hypotheses_report(vault: Path, stale_days: int) -> int:
 
 
 def main() -> int:
+    # Windows pipes default to a legacy codepage; reports print non-ASCII.
+    for _s in (sys.stdout, sys.stderr):
+        if hasattr(_s, "reconfigure") and (_s.encoding or "").lower() not in ("utf-8", "utf8"):
+            _s.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(
         description="Health report for an Obsidian vault (broken links, orphans, claims, graph)."
     )
@@ -837,7 +841,7 @@ def main() -> int:
     by_basename: dict[str, list[Path]] = {}  # "x" -> [paths] (md only)
     by_fullname: dict[str, list[Path]] = {}  # "x.png" -> [paths] (all files)
     for f in index_files:
-        rel = norm(str(f.relative_to(vault)))
+        rel = norm(f.relative_to(vault).as_posix())
         by_relpath[rel] = f
         if rel.endswith(".md"):
             by_relpath[rel[:-3]] = f
@@ -876,11 +880,11 @@ def main() -> int:
                     if hit in inbound:
                         inbound[hit] += 1
                 else:
-                    broken.append((str(f.relative_to(vault)), lineno, target))
+                    broken.append((f.relative_to(vault).as_posix(), lineno, target))
 
     # ---- derived views ------------------------------------------------------
     def is_quiet(f: Path) -> bool:
-        rel = norm(str(f.relative_to(vault)))
+        rel = norm(f.relative_to(vault).as_posix())
         return any(h in rel for h in QUIET_ORPHAN_HINTS)
 
     orphans = [f for f in md_files if outbound[f] == 0 and inbound[f] == 0]
@@ -893,7 +897,7 @@ def main() -> int:
         m = VERSION_TOKEN.search(f.stem)
         if m:
             stem = VERSION_TOKEN.sub("", f.stem).strip(" _-")
-            key = norm(str(f.parent.relative_to(vault)) + "/" + stem)
+            key = norm(f.parent.relative_to(vault).as_posix() + "/" + stem)
             clusters.setdefault(key, []).append(f)
     dup_clusters = {k: v for k, v in clusters.items() if len(v) > 1}
 
@@ -944,12 +948,12 @@ def main() -> int:
     dump(
         "Idea-bearing orphans (candidates to link or promote)",
         idea_orphans,
-        lambda f: str(f.relative_to(vault)),
+        lambda f: f.relative_to(vault).as_posix(),
     )
     dump(
         "Oversized idea notes (candidates to split, only if idea, not log)",
         sorted(oversized, key=lambda f: -words[f]),
-        lambda f: f"{words[f]:>6,}w  {f.relative_to(vault)}",
+        lambda f: f"{words[f]:>6,}w  {f.relative_to(vault).as_posix()}",
     )
     dump(
         "Version-duplicate clusters (archive superseded)",

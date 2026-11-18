@@ -42,6 +42,10 @@ def sha256_of(path: Path) -> str | None:
 
 
 def main() -> int:
+    # Windows pipes default to a legacy codepage; reports print non-ASCII.
+    for _s in (sys.stdout, sys.stderr):
+        if hasattr(_s, "reconfigure") and (_s.encoding or "").lower() not in ("utf-8", "utf8"):
+            _s.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     ap.add_argument("path")
     ap.add_argument(
