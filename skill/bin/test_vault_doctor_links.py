@@ -82,6 +82,7 @@ def _run(vault: Path) -> str:
         [sys.executable, str(DOCTOR), "--vault", str(vault), "--full"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     return proc.stdout
 
@@ -154,11 +155,16 @@ def test_dangling_symlink_is_skipped_not_fatal() -> None:
     _write(vault / "a.md", "# A\n\nSee [[b]].\n")
     _write(vault / "b.md", "# B\n")
     (vault / "Projects").mkdir()
-    (vault / "Projects" / "elsewhere.md").symlink_to(vault / "missing-target.md")
+    try:
+        (vault / "Projects" / "elsewhere.md").symlink_to(vault / "missing-target.md")
+    except OSError:
+        # Windows without Developer Mode can't create symlinks; nothing to test.
+        print("SKIP  test_dangling_symlink_is_skipped_not_fatal: symlinks not permitted")
+        return
     for extra in ([], ["--hypotheses"], ["--claims"], ["--graph"]):
         proc = subprocess.run(
             [sys.executable, str(DOCTOR), "--vault", str(vault), *extra],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8",
         )
         assert "Traceback" not in proc.stderr, f"{extra}: {proc.stderr[-400:]}"
         assert proc.returncode == 0, f"{extra}: exit {proc.returncode}"

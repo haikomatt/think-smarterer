@@ -248,6 +248,10 @@ def show(args) -> int:
 
 
 def main() -> int:
+    # Windows pipes default to a legacy codepage; reports print non-ASCII.
+    for _s in (sys.stdout, sys.stderr):
+        if hasattr(_s, "reconfigure") and (_s.encoding or "").lower() not in ("utf-8", "utf8"):
+            _s.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     e = sub.add_parser("enqueue")
